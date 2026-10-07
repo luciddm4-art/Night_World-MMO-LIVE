@@ -134,14 +134,72 @@ var torches=[];
   var f=new T.Mesh(new T.BoxGeometry(.4,.5,.4),new T.MeshBasicMaterial({color:0xffa53a}));
   f.position.set(p[0],1.9,p[1]);scene.add(f);
   var l=new T.PointLight(0xff8a3c,1.3,16);l.position.set(p[0],2.2,p[1]);scene.add(l);l.userData.s=R()*9;torches.push(l)});
-function mkFig(col){var g=new T.Group(),m=new T.MeshLambertMaterial({color:col});
- var b=new T.Mesh(new T.BoxGeometry(.7,1.1,.4),m);b.position.y=1.15;g.add(b);
- var h=new T.Mesh(new T.BoxGeometry(.45,.45,.45),new T.MeshLambertMaterial({color:0xc8a98a}));h.position.y=2;g.add(h);
- [-.2,.2].forEach(function(x){var l=new T.Mesh(new T.BoxGeometry(.25,.7,.3),m);l.position.set(x,.35,0);g.add(l)});
- var n=new T.Mesh(new T.BoxGeometry(.12,.12,.2),new T.MeshBasicMaterial({color:0x222222}));n.position.set(0,2,.3);g.add(n);
- var sl=new T.Mesh(new T.RingGeometry(1,1.9,16,1,-Math.PI/2-1,2),new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,side:T.DoubleSide,depthWrite:false,fog:false}));
- sl.rotation.x=-Math.PI/2;sl.position.y=1.2;g.add(sl);g.userData.sl=sl;g.userData.t=-9999;
- return g}
+
+function mkFig(col){
+  var g=new T.Group(), m=new T.MeshLambertMaterial({color:col});
+
+  var torso=new T.Group(); g.add(torso); g.userData.torso=torso;
+
+  var b=new T.Mesh(new T.BoxGeometry(.7,1.1,.4),m); b.position.y=1.15; torso.add(b);
+  var head=new T.Mesh(new T.BoxGeometry(.45,.45,.45),new T.MeshLambertMaterial({color:0xc8a98a}));
+  head.position.y=2; torso.add(head);
+  var nose=new T.Mesh(new T.BoxGeometry(.12,.12,.2),new T.MeshBasicMaterial({color:0x222222}));
+  nose.position.set(0,2,.3); torso.add(nose);
+
+  var legGeo=new T.BoxGeometry(.25,.7,.3); legGeo.translate(0,-.35,0);
+  var legL=new T.Mesh(legGeo,m); legL.position.set(-.2,.7,0); g.add(legL);
+  var legR=new T.Mesh(legGeo,m); legR.position.set( .2,.7,0); g.add(legR);
+
+  var armGeo=new T.BoxGeometry(.22,.65,.28); armGeo.translate(0,-.32,0);
+  var armL=new T.Mesh(armGeo,m); armL.position.set(-.47,1.6,0); torso.add(armL);
+  var armR=new T.Mesh(armGeo,m); armR.position.set( .47,1.6,0); torso.add(armR);
+
+  var sl=new T.Mesh(new T.RingGeometry(1,1.9,16,1,-Math.PI/2-1,2),
+    new T.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0,side:T.DoubleSide,depthWrite:false,fog:false}));
+  sl.rotation.x=-Math.PI/2; sl.position.y=1.2; g.add(sl);
+
+  g.userData.legL=legL; g.userData.legR=legR;
+  g.userData.armL=armL; g.userData.armR=armR;
+  g.userData.sl=sl; g.userData.t=-9999;
+  g.userData.phase=0;
+  g.userData.phase0=Math.random()*6.283;
+  return g}
+
+function animFig(g,dt,speed,now){
+  var u=g.userData;
+  var walkAmt=Math.min(1,speed/7);
+  u.phase += dt*(2+speed*1.6);
+  var s=Math.sin(u.phase);
+  var t=now*0.001;
+
+  u.legL.rotation.x =  s*0.85*walkAmt;
+  u.legR.rotation.x = -s*0.85*walkAmt;
+
+  u.armL.rotation.x = -s*0.75*walkAmt;
+  u.armR.rotation.x =  s*0.75*walkAmt;
+
+  var idle=Math.sin(t*1.6+u.phase0)*0.06*(1-walkAmt);
+  u.armL.rotation.x += idle;
+  u.armR.rotation.x -= idle;
+
+  u.torso.position.y = Math.abs(s)*0.07*walkAmt
+                     + Math.sin(t*2+u.phase0)*0.02*(1-walkAmt);
+  u.torso.rotation.x = walkAmt*0.12;
+  u.torso.rotation.y *= 0.85;
+
+  var age=now-u.t;
+  if(age>=0&&age<320){
+    var sw=Math.sin((age/320)*Math.PI);
+    u.armR.rotation.x = 0.75*walkAmt*s - 2.6*sw;
+    u.armR.rotation.z = -0.9*sw;
+    u.armL.rotation.x = -0.75*walkAmt*s - 0.5*sw;
+    u.torso.rotation.y = 0.5*sw;
+    u.torso.rotation.x += 0.18*sw;
+  } else {
+    u.armR.rotation.z *= 0.8;
+  }
+}
+
 /* spawn hall: Market, Bank, Repair station */
 function mkLabel(txt,w,h,bg){var c=document.createElement('canvas');c.width=512;c.height=Math.round(512*h/w);var g=c.getContext('2d');
  g.fillStyle=bg;g.fillRect(0,0,c.width,c.height);g.strokeStyle='#f2d34a';g.lineWidth=8;g.strokeRect(4,4,c.width-8,c.height-8);
@@ -172,7 +230,7 @@ ST.forEach(function(s){
 var ring=new T.Mesh(new T.RingGeometry(1.6,2.1,24),new T.MeshBasicMaterial({color:0x6fd0ff,transparent:true,opacity:.5,side:T.DoubleSide}));
 ring.rotation.x=-Math.PI/2;ring.position.set(0,.17,-1.5);scene.add(ring);
 
-/* economy: gold, bank, potions, weapon durability (saved on this device only) */
+/* economy */
 var S={gold:200,bank:0,pot:0,w:{n:'Wooden Sword',d:40,m:40}};
 try{var sv=JSON.parse(localStorage.getItem('nwo1')||'null');
  if(sv&&sv.w&&typeof sv.w.n==='string'&&[sv.gold,sv.bank,sv.pot,sv.w.d,sv.w.m].every(function(v){return typeof v==='number'&&isFinite(v)&&v>=0}))S=sv}catch(e){}
@@ -318,7 +376,22 @@ function loop(){
  for(var k in others){var o=others[k],g=o.g,f=Math.min(1,dt*10);
   g.position.x+=(o.tx-g.position.x)*f;g.position.z+=(o.tz-g.position.z)*f;g.position.y+=(o.ty-g.position.y)*f;
   g.rotation.y+=(((o.tr-g.rotation.y+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI)*f}
- var now=performance.now();upS(me,now);for(var k in others)upS(others[k].g,now);
+ var now=performance.now();
+
+ // player speed from position delta, drive smooth animation
+ if(P._px===undefined){P._px=P.x;P._pz=P.z}
+ var psp=Math.min(20,Math.hypot(P.x-P._px,P.z-P._pz)/Math.max(dt,1e-3));
+ P._px=P.x;P._pz=P.z;
+ upS(me,now); animFig(me,dt,psp,now);
+
+ for(var k2 in others){
+  var og=others[k2].g;
+  if(others[k2].px===undefined){others[k2].px=og.position.x;others[k2].pz=og.position.z}
+  var osp=Math.min(20,Math.hypot(og.position.x-others[k2].px,og.position.z-others[k2].pz)/Math.max(dt,1e-3));
+  others[k2].px=og.position.x;others[k2].pz=og.position.z;
+  upS(og,now); animFig(og,dt,osp,now);
+ }
+
  var d=7,cp=Math.cos(pitch);
  cam.position.set(P.x+sy*cp*d,P.y+2+Math.sin(pitch)*d,P.z+cy*cp*d);
  cam.position.y=Math.max(cam.position.y,hgt(cam.position.x,cam.position.z)+1);
