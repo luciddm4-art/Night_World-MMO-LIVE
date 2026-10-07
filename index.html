@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Night World Online</title>
+<style>
+:root{--bg:#0b0e1a;--ink:#f2d34a}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;font-family:Georgia,serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;touch-action:none;cursor:grab}
+#cap{position:fixed;left:0;right:0;top:0;text-align:left;color:var(--ink);font-weight:700;font-size:clamp(14px,3.6vw,22px);padding:calc(env(safe-area-inset-top,0px) + 10px) 100px 0 12px;text-shadow:0 2px 0 #000;pointer-events:none}
+#mm,#cap,#stick,#atk{position:fixed;z-index:2;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#stick{left:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 44px);width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.35)}
+#knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.45);pointer-events:none}
+#atk{right:22px;bottom:calc(env(safe-area-inset-bottom,0px) + 56px);width:84px;height:84px;border-radius:50%;border:2px solid rgba(255,120,100,.8);background:rgba(200,50,40,.45);color:#fff;font:700 15px Georgia,serif;padding:0}
+#atk:active{background:rgba(230,70,55,.75)}
+#hint{z-index:2}
+#mm{inset:auto;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);width:80px;height:80px;border-radius:50%;border:2px solid rgba(242,211,74,.6);background:#0b0e1a;cursor:default;pointer-events:none}
+#hint{position:fixed;left:0;right:0;bottom:0;text-align:center;color:#9aa6c8;font-size:13px;padding:0 12px calc(env(safe-area-inset-bottom,0px) + 14px);pointer-events:none}
+</style>
+</head>
+<body>
+<div id="cap">This is one html file.</div>
+<canvas id="mm" width="96" height="96"></canvas>
+<div id="stick"><div id="knob"></div></div>
+<button id="atk" type="button">Attack</button>
+<div id="hint">Stick or WASD to move, drag to look, Space to attack</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+var T=THREE, W=innerWidth, H=innerHeight, PX=W<600?3:4;
+var renderer=new T.WebGLRenderer({antialias:false});
+renderer.setSize(Math.floor(W/PX),Math.floor(H/PX),false);
+document.body.appendChild(renderer.domElement);
+var scene=new T.Scene(), SKY=0x121830;
