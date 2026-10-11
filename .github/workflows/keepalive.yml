@@ -1,0 +1,12 @@
+# Pings the free Render server so it rarely falls asleep (cold starts take ~30-60 s).
+# Scheduled workflows only run on the default branch. Delete this file to turn it off.
+name: Keep server awake
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 90 --retry 2 https://night-world-mmo-live.onrender.com/health
