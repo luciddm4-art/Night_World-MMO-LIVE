@@ -1,8 +1,11 @@
 // "Use" button / E key: stations, portal, gathering (with a cast bar), donkey.
 import { STATIONS, STATION_Z, PORTAL, ITEMS, CFG } from '../shared/data.js';
-import { S } from './state.js';
+import { S, nodeQty } from './state.js';
 import { send } from './net.js';
-import { chunks, world, treeReady } from './terrain.js';
+import { chunks, world, treeReady, setTreeShake, setNodeShake, hgt } from './terrain.js';
+import { burst } from './fx.js';
+import { sfx } from './audio.js';
+import { vibrate } from './settings.js';
 import { panelState, openCraft, openTravel, closePanel } from './panel.js';
 import { getDonkey } from './mount.js';
 
@@ -19,7 +22,35 @@ function showCast(label) {
   castLabel.textContent = label;
   castFill.style.width = '0%';
 }
+// ---- gather feedback: shake the target, throw chips, tick sounds ----
+let fxTarget = null, nextTick = 0;
+function targetPos(kind, id) {
+  if (kind === 'tree') {
+    const [X, Z, q] = id.split(',').map(Number);
+    const t = world.ctrees(X, Z);
+    return t[q * 3] === undefined ? null : { x: t[q * 3], z: t[q * 3 + 1], y: 1.2, color: 0xc89a5a };
+  }
+  if (kind === 'node') {
+    const [X, Z] = id.split(':')[1].split(',').map(Number);
+    for (const nd of world.cres(X, Z)) if (nd.id === id) return { x: nd.x, z: nd.z, y: 0.6, color: id.startsWith('cotton') ? 0xffffff : 0xb8c4d8 };
+  }
+  return null;
+}
+function startFx(kind, id) {
+  stopFx();
+  if (kind === 'tree') setTreeShake(id);
+  else if (kind === 'node') setNodeShake(id);
+  fxTarget = targetPos(kind, id);
+  nextTick = performance.now() + 150;
+}
+function stopFx() {
+  setTreeShake(null);
+  setNodeShake(null);
+  fxTarget = null;
+}
+
 export function hideCast() {
+  stopFx();
   castEl.style.display = 'none';
   castLabel.style.display = 'none';
   castFill.style.width = '0%';
@@ -33,6 +64,7 @@ export function onCast(m) {
   let label = LABELS[m.kind] || 'Working...';
   if (m.kind === 'node') label = 'Gathering ' + ITEMS[m.id.split(':')[0]].n + '...';
   showCast(label);
+  startFx(m.kind, m.id);
 }
 export function onFail() {
   S.gather.active = false; S.gather.pending = 0;
@@ -49,8 +81,15 @@ export function updateGather(now) {
   const g = S.gather;
   if (!g.active) return;
   const pct = (now - g.start) / g.dur;
+  if (fxTarget && now >= nextTick) {
+    nextTick = now + 300;
+    burst(fxTarget.x, hgt(fxTarget.x, fxTarget.z) + fxTarget.y, fxTarget.z, { n: 5, color: fxTarget.color, speed: 1.4, up: 2, life: 0.45 });
+    sfx('tick');
+    vibrate(8);
+  }
   castFill.style.width = Math.min(100, pct * 100) + '%';
   if (pct >= 1) {
+    if (fxTarget) burst(fxTarget.x, hgt(fxTarget.x, fxTarget.z) + fxTarget.y, fxTarget.z, { n: 14, color: fxTarget.color, speed: 2.2, up: 3, life: 0.6 });
     g.active = false;
     hideCast();
     send({ t: 'gdone' });
@@ -76,7 +115,7 @@ function findInteract() {
     const c = chunks[k];
     if (Math.abs(c.cx - pcx) > 1 || Math.abs(c.cz - pcz) > 1) continue;
     for (const nd of c.nodes) {
-      if (!nd.mesh.visible) continue;
+      if (nodeQty(nd.def.id) <= 0) continue;
       const d2 = Math.hypot(P.x - nd.def.x, P.z - nd.def.z);
       if (d2 < 2.0 && d2 < bd) { bd = d2; best = { kind: 'node', node: nd }; }
     }

@@ -2,16 +2,18 @@ import { S } from './state.js';
 
 const $ = (id) => document.getElementById(id);
 export const el = {
-  toast: $('toast'), hpfill: $('hpfill'), hplabel: $('hplabel'), hud: $('hud'), who: $('who'),
+  toasts: $('toasts'), hpfill: $('hpfill'), hplabel: $('hplabel'), hud: $('hud'), who: $('who'),
   boot: $('boot'), bootmsg: $('bootmsg'), boothint: $('boothint'), err: $('err'),
 };
 
-let tt = 0;
+// Stacked toasts: up to 4 lines, each fades on its own.
 export function say(m) {
-  el.toast.textContent = m;
-  el.toast.style.opacity = 1;
-  clearTimeout(tt);
-  tt = setTimeout(() => { el.toast.style.opacity = 0; }, 2200);
+  const d = document.createElement('div');
+  d.textContent = m;
+  el.toasts.appendChild(d);
+  while (el.toasts.children.length > 4) el.toasts.firstChild.remove();
+  setTimeout(() => d.classList.add('out'), 2200);
+  setTimeout(() => d.remove(), 2600);
 }
 
 export function showErr(m) {

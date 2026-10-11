@@ -74,6 +74,7 @@ export function mkRabbit() {
   const e1 = new T.Mesh(new T.BoxGeometry(0.06, 0.3, 0.1), m); e1.position.set(-0.09, 0.65, -0.5); g.add(e1);
   const e2 = new T.Mesh(new T.BoxGeometry(0.06, 0.3, 0.1), m); e2.position.set(0.09, 0.65, -0.5); g.add(e2);
   g.userData.body = b;
+  g.userData.mat = m;
   return g;
 }
 

@@ -14,6 +14,10 @@ A small browser 3D MMO: gather wood, cotton and ore, hunt rabbits, craft gear at
 
 **Controls** — move: stick / `WASD` · look: drag · sprint: `Shift` · attack: `Space` / Attack button · use/gather/craft: `E` / Use button · inventory: `I` · portable crafting: `C` · chat: `Enter` · `/logout` in chat forgets your saved login on this device.
 
+**Phone extras** — a **Sprint** toggle button (above Attack), bigger tap targets, and vibration on hits. **Desktop extras** — left-click the world (without dragging) to attack, hover inventory/equipment slots for stats and recipes. **⚙ Settings** (top right): brightness, sound, vibration, auto-face. They are saved on this device only (`localStorage.nwo_settings`).
+
+**Game feel** — floating damage numbers, hit flash and knockback, rabbit HP bars and a `!` when one is chasing you, screen shake + red vignette when bitten, wood chips / ore sparks while gathering, trees that shake and fall, loot that flies into your inventory, and synthesised sound effects (Web Audio — no audio files). Audio starts after your first tap or key press, as browsers require.
+
 **Accounts** — register with a name + password to keep your character (inventory, gear, position per world), or play as a guest (not saved).
 
 ## Run it locally
@@ -60,7 +64,7 @@ The world itself (terrain, tree/ore/cotton/rabbit positions) is generated from t
 ### Protocol (JSON over WebSocket)
 
 Client → server: `auth{mode: guest|register|login|token}`, `p{x,z,r}`, `atk{r}`, `gather{kind,id}`, `gdone`, `gcancel`, `craft{id}`, `equip{i}`, `unequip{slot}`, `mount`, `dismount`, `chat{m}`.
-Server → client: `welcome`, `auth_err`, `s` (10 Hz snapshot: you, nearby players, nearby rabbits), `inv`, `node`, `cast`, `fail`, `toast`, `pos` (correction), `chat`, `kick`.
+Server → client: `welcome`, `auth_err`, `s` (10 Hz snapshot: you, nearby players, nearby rabbits), `inv`, `node`, `cast`, `fail`, `toast`, `pos` (correction), `chat`, `kick`, plus three feedback events: `hit {i,d,h,k,by}` (a rabbit was hit; sent to players within 60 units), `hurt {d,by}` (you were bitten) and `gain {item,n,src}` (you received an item; `src` is `gather`, `loot`, `craft` or `reward`). Rabbit entries in `s` carry `a:1` while chasing or attacking. These only drive visuals and sound; the server remains the only authority on damage and items.
 
 ### Security model
 

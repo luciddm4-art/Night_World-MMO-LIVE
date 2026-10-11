@@ -27,7 +27,6 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 .b:disabled{opacity:.4}
 .b.x{justify-content:center;background:rgba(200,50,40,.35);border-color:rgba(255,120,100,.6)}
 .b small{opacity:.6;font-weight:400}
-#toast{position:fixed;left:50%;top:30%;transform:translateX(-50%);z-index:7;max-width:80vw;text-align:center;color:#fff;background:rgba(0,0,0,.7);padding:8px 14px;border-radius:10px;font:600 14px Georgia,serif;opacity:0;transition:opacity .25s;pointer-events:none}
 #inv{position:fixed;left:50%;transform:translateX(-50%);bottom:6px;z-index:4;width:min(460px,96vw);background:rgba(11,14,26,.92);border:2px solid rgba(242,211,74,.6);border-radius:10px;font-family:Georgia,serif;color:#f2d34a;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;box-shadow:0 -4px 16px rgba(0,0,0,.5)}
 #invhead{padding:8px 12px;text-align:center;font:700 13px Georgia,serif;color:#f2d34a;cursor:pointer;display:flex;justify-content:center;align-items:center;gap:8px;position:relative}
 #invhead .chev{display:inline-block;transition:transform .15s}
@@ -73,3 +72,39 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 .card button.alt{background:transparent;border-color:rgba(255,255,255,.25);color:#cfd6ec;font-weight:600}
 .card button:disabled{opacity:.5}
 #autherr{color:#ff8a80;min-height:18px;font-size:13px}
+
+/* ---- game feel ---- */
+#toasts{position:fixed;left:50%;top:30%;transform:translateX(-50%);z-index:7;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;max-width:80vw}
+#toasts div{color:#fff;background:rgba(0,0,0,.7);padding:6px 14px;border-radius:10px;font:600 14px Georgia,serif;text-align:center;animation:toastin .18s ease-out;transition:opacity .35s}
+#toasts div.out{opacity:0}
+@keyframes toastin{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+#fx{position:fixed;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+.floater{position:absolute;left:0;top:0;will-change:transform,opacity;font:800 18px Georgia,serif;color:#fff;text-shadow:0 2px 0 #000,0 0 4px #000;white-space:nowrap}
+.floater.dmg{color:#ffe28a}
+.floater.crit{color:#ff9a3c;font-size:24px}
+.floater.hurt{color:#ff5a5a}
+.floater.info{color:#9fe0ff;font-size:14px}
+.fly{position:fixed;left:0;top:0;z-index:7;pointer-events:none;padding:3px 8px;border-radius:12px;background:rgba(242,211,74,.92);color:#1b1608;font:800 13px Georgia,serif;box-shadow:0 0 10px rgba(242,211,74,.7)}
+#invhead.bump{animation:bump .25s ease-out}
+@keyframes bump{40%{transform:scale(1.08);background:rgba(242,211,74,.25)}}
+#hurt{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(180,0,0,0) 45%,rgba(200,20,20,.75) 100%)}
+#sprint{position:fixed;right:22px;bottom:150px;width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,220,120,.8);background:rgba(160,120,20,.45);color:#fff;font:700 12px Georgia,serif;padding:0;z-index:2;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
+#sprint.on{background:rgba(240,190,60,.8);color:#1b1608}
+#gear{position:fixed;right:8px;top:140px;z-index:3;width:34px;height:30px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(11,14,26,.8);color:#f2d34a;font:700 16px Georgia,serif;padding:0}
+#settings{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;width:min(300px,90vw);padding:14px;border-radius:12px;background:rgba(11,14,26,.96);border:2px solid rgba(242,211,74,.6);color:#f2d34a;font-family:Georgia,serif;display:none}
+#settings.open{display:block}
+#settings h3{margin:0 0 10px;font-size:16px}
+#settings label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0;font:600 14px Georgia,serif;color:#e8ecf8}
+#settings input[type=range]{width:150px}
+#settings input[type=checkbox]{width:22px;height:22px}
+#settings button{width:100%;margin-top:6px;padding:10px;border-radius:8px;border:1px solid rgba(242,211,74,.7);background:rgba(242,211,74,.18);color:#f2d34a;font:700 14px Georgia,serif}
+@media (pointer:coarse){
+  #sprint{display:block}
+  .eqslot{width:40px;height:40px}
+  #eq{grid-template-columns:repeat(7,40px)}
+  #use{padding:15px 24px;font-size:16px}
+  #chatbtn{padding:9px 12px}
+  #gear{width:40px;height:36px}
+  .b{min-height:46px}
+  #craftbtn{padding:8px 12px!important}
+}

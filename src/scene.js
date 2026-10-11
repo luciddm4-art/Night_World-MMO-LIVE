@@ -47,11 +47,14 @@ export function tex(base, bricks, rep) {
   return t;
 }
 
-scene.add(new T.AmbientLight(0x3a4a7a, 0.9));
+const amb = new T.AmbientLight(0x3a4a7a, 0.9);
+scene.add(amb);
 const moonDir = new T.Vector3(-40, 60, -80);
 const dl = new T.DirectionalLight(0x8aa0d8, 0.55);
 dl.position.copy(moonDir);
 scene.add(dl);
+// brightness setting scales these two
+export const lights = { amb, dir: dl, ambBase: 0.9, dirBase: 0.55 };
 const moon = new T.Mesh(new T.SphereGeometry(14, 8, 6), new T.MeshBasicMaterial({ color: 0xdfe3ea, fog: false }));
 moon.position.copy(moonDir).multiplyScalar(3);
 scene.add(moon);

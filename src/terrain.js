@@ -64,25 +64,69 @@ export const treeReady = (tk) => nodeQty(tk) > 0;
 const nodeMeshes = {}; // id -> mesh of loaded resource nodes
 let lastC = null;
 
+// ---- little animations: trees fall / regrow / sway, nodes shrink / pop / shake ----
+const treeFx = {}; // tree id -> {type:'fall'|'grow'|'sway', t0, dur, axis}
+const nodeFx = {}; // node id -> {type:'shrink'|'grow', t0, dur}
+let swayTree = null, shakeNode = null, shakenMesh = null;
+const Z_AXIS = new T.Vector3(0, 0, 1);
+const hash = (str) => { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return h; };
+const backOut = (u) => { const c = 1.7; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+const hasTreeFx = () => { for (const k in treeFx) return true; return swayTree !== null; };
+
+export function setTreeShake(id) { swayTree = id; lastC = null; }
+export function setNodeShake(id) { shakeNode = id; }
+
 // Called when the server says a tree / node changed.
 export function setNodeQty(id, qty) {
+  const prev = nodeQty(id);
   if (qty >= CFG.NODE_QTY) delete S.nodeQty[id];
   else S.nodeQty[id] = qty;
+  const now = performance.now();
   const mesh = nodeMeshes[id];
-  if (mesh) mesh.visible = qty > 0;
-  else if (!id.includes(':')) lastC = null; // a tree: rebuild the instanced forest
+  if (mesh) {
+    if (qty <= 0 && prev > 0) nodeFx[id] = { type: 'shrink', t0: now, dur: 350 }; // stays visible until it finishes
+    else if (qty > 0 && prev <= 0) { mesh.visible = true; mesh.scale.setScalar(0.001); nodeFx[id] = { type: 'grow', t0: now, dur: 450 }; }
+  } else if (!id.includes(':')) { // a tree: animate, and rebuild the instanced forest
+    if (qty <= 0 && prev > 0) treeFx[id] = { type: 'fall', t0: now, dur: 550, axis: new T.Vector3(Math.cos(hash(id)), 0, Math.sin(hash(id))).normalize() };
+    else if (qty > 0 && prev <= 0) treeFx[id] = { type: 'grow', t0: now, dur: 500 };
+    lastC = null;
+  }
+}
+
+// call every frame
+export function updateNodeFx(now) {
+  for (const id in nodeFx) {
+    const f = nodeFx[id], mesh = nodeMeshes[id];
+    if (!mesh) { delete nodeFx[id]; continue; }
+    const u = Math.min(1, (now - f.t0) / f.dur);
+    if (f.type === 'shrink') {
+      mesh.scale.setScalar(Math.max(0.001, 1 - u * u));
+      if (u >= 1) { mesh.visible = false; mesh.scale.setScalar(1); delete nodeFx[id]; }
+    } else {
+      mesh.scale.setScalar(Math.max(0.001, backOut(u)));
+      if (u >= 1) { mesh.scale.setScalar(1); delete nodeFx[id]; }
+    }
+  }
+  const m = shakeNode ? nodeMeshes[shakeNode] : null;
+  if (shakenMesh && shakenMesh !== m) shakenMesh.rotation.z = 0;
+  if (m) m.rotation.z = Math.sin(now * 0.06) * 0.16;
+  shakenMesh = m;
 }
 
 export function resetNodes(list) {
   S.nodeQty = {};
   for (const [id, qty] of list) S.nodeQty[id] = qty;
   lastC = null;
-  for (const id in nodeMeshes) nodeMeshes[id].visible = nodeQty(id) > 0;
+  for (const id in nodeMeshes) { nodeMeshes[id].visible = nodeQty(id) > 0; nodeMeshes[id].scale.setScalar(1); }
+  for (const k in nodeFx) delete nodeFx[k];
+  for (const k in treeFx) delete treeFx[k];
 }
 
 export function updateWorld() {
   const cx = Math.floor(S.P.x / CS), cz = Math.floor(S.P.z / CS);
-  if (lastC && lastC[0] === cx && lastC[1] === cz) return;
+  const animating = hasTreeFx();
+  if (!animating && lastC && lastC[0] === cx && lastC[1] === cz) return;
+  const now = performance.now();
   lastC = [cx, cz];
   for (const k in chunks) {
     const c = chunks[k];
@@ -111,9 +155,21 @@ export function updateWorld() {
       }
       const t = world.ctrees(X, Z);
       for (let q = 0; q < t.length; q += 3) {
-        if (!treeReady(X + ',' + Z + ',' + q / 3)) continue;
+        const tk = X + ',' + Z + ',' + q / 3;
+        const fx = treeFx[tk];
+        const standing = treeReady(tk);
+        if (!standing && !(fx && fx.type === 'fall')) continue;
         const x = t[q], z = t[q + 1], k2 = t[q + 2], y = hgt(x, z);
-        tsv.set(k2, k2, k2);
+        let sc = k2;
+        tq.set(0, 0, 0, 1);
+        if (fx) {
+          const u = (now - fx.t0) / fx.dur;
+          if (u >= 1) { delete treeFx[tk]; if (!standing) continue; }
+          else if (fx.type === 'fall') { sc = k2 * (1 - u * u * 0.9); tq.setFromAxisAngle(fx.axis, u * u * 1.3); }
+          else if (fx.type === 'grow') sc = Math.max(0.001, k2 * backOut(u));
+        }
+        if (swayTree === tk) tq.setFromAxisAngle(Z_AXIS, Math.sin(now * 0.05) * 0.05);
+        tsv.set(sc, sc, sc);
         tm.compose(tp.set(x, y + 1.5 * k2, z), tq, tsv); trunk.setMatrixAt(n, tm);
         tm.compose(tp.set(x, y + 4.2 * k2, z), tq, tsv); fol.setMatrixAt(n, tm);
         tm.compose(tp.set(x, y + 6.4 * k2, z), tq, tsv); fol2.setMatrixAt(n, tm);
