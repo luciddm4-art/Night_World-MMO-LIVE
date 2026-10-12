@@ -7,6 +7,10 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 #hpwrap{position:fixed;left:12px;top:36px;z-index:2;width:min(220px,50vw);height:12px;border:2px solid rgba(242,211,74,.5);border-radius:6px;background:rgba(0,0,0,.5);overflow:hidden}
 #hpfill{height:100%;background:linear-gradient(90deg,#7a1a1a,#c83232);transition:width .15s}
 #hplabel{position:fixed;left:12px;top:36px;z-index:3;width:min(220px,50vw);height:12px;text-align:center;font:700 10px Georgia,serif;color:#fff;text-shadow:0 1px 0 #000;line-height:12px;pointer-events:none}
+#mpwrap{position:fixed;left:12px;top:92px;z-index:2;width:min(150px,36vw);height:9px;border:2px solid rgba(120,200,255,.5);border-radius:6px;background:rgba(0,0,0,.5);overflow:hidden;display:none}
+#mpfill{height:100%;background:linear-gradient(90deg,#1c4a7a,#4aa0e0);transition:width .15s}
+#mplabel{position:fixed;left:12px;top:92px;z-index:3;width:min(150px,36vw);height:9px;text-align:center;font:700 8px Georgia,serif;color:#fff;text-shadow:0 1px 0 #000;line-height:9px;pointer-events:none;display:none}
+#mount.wait{opacity:.5}
 #hint{position:fixed;left:0;right:0;bottom:60px;z-index:2;text-align:center;color:#9aa6c8;font-size:12px;padding:0 90px;pointer-events:none;text-shadow:0 1px 0 #000}
 #stick{position:fixed;left:18px;bottom:44px;width:112px;height:112px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.35);z-index:2;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
 #knob{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.45);pointer-events:none}
@@ -83,13 +87,12 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 .floater.dmg{color:#ffe28a}
 .floater.crit{color:#ff9a3c;font-size:24px}
 .floater.hurt{color:#ff5a5a}
+.floater.mount{color:#6fc3ff;font-size:20px}
 .floater.info{color:#9fe0ff;font-size:14px}
 .fly{position:fixed;left:0;top:0;z-index:7;pointer-events:none;padding:3px 8px;border-radius:12px;background:rgba(242,211,74,.92);color:#1b1608;font:800 13px Georgia,serif;box-shadow:0 0 10px rgba(242,211,74,.7)}
 #invhead.bump{animation:bump .25s ease-out}
 @keyframes bump{40%{transform:scale(1.08);background:rgba(242,211,74,.25)}}
 #hurt{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(180,0,0,0) 45%,rgba(200,20,20,.75) 100%)}
-#sprint{position:fixed;right:22px;bottom:150px;width:64px;height:64px;border-radius:50%;border:2px solid rgba(255,220,120,.8);background:rgba(160,120,20,.45);color:#fff;font:700 12px Georgia,serif;padding:0;z-index:2;display:none;touch-action:none;user-select:none;-webkit-user-select:none}
-#sprint.on{background:rgba(240,190,60,.8);color:#1b1608}
 #gear{position:fixed;right:8px;top:140px;z-index:3;width:34px;height:30px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(11,14,26,.8);color:#f2d34a;font:700 16px Georgia,serif;padding:0}
 #settings{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;width:min(300px,90vw);padding:14px;border-radius:12px;background:rgba(11,14,26,.96);border:2px solid rgba(242,211,74,.6);color:#f2d34a;font-family:Georgia,serif;display:none}
 #settings.open{display:block}
@@ -99,7 +102,6 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 #settings input[type=checkbox]{width:22px;height:22px}
 #settings button{width:100%;margin-top:6px;padding:10px;border-radius:8px;border:1px solid rgba(242,211,74,.7);background:rgba(242,211,74,.18);color:#f2d34a;font:700 14px Georgia,serif}
 @media (pointer:coarse){
-  #sprint{display:block}
   .eqslot{width:40px;height:40px}
   #eq{grid-template-columns:repeat(6,40px)}
   #use{padding:15px 24px;font-size:16px}

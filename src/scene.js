@@ -57,7 +57,10 @@ scene.add(dl);
 export const lights = { amb, dir: dl, ambBase: 0.9, dirBase: 0.55 };
 const moon = new T.Mesh(new T.SphereGeometry(14, 8, 6), new T.MeshBasicMaterial({ color: 0xdfe3ea, fog: false }));
 moon.position.copy(moonDir).multiplyScalar(3);
-scene.add(moon);
+// moon and stars live in a group that follows the camera, so they stay put in the sky however far you walk
+export const sky = new T.Group();
+sky.add(moon);
+scene.add(sky);
 
 const sp = [];
 for (let i = 0; i < 350; i++) {
@@ -66,7 +69,7 @@ for (let i = 0; i < 350; i++) {
 }
 const sg = new T.BufferGeometry();
 sg.setAttribute('position', new T.Float32BufferAttribute(sp, 3));
-scene.add(new T.Points(sg, new T.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, fog: false })));
+sky.add(new T.Points(sg, new T.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, fog: false })));
 
 export function onResize() {
   view.W = innerWidth;

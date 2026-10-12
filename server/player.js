@@ -27,7 +27,9 @@ export class Player {
     this.lastAtk = 0;
     this.lastDamageT = 0;
     this.lastPosT = 0;
-    this.moveBudget = CFG.MAX_SPEED;
+    this.moveBudget = CFG.WALK_SPEED;
+    this.mountHp = CFG.MOUNT_HP; // rabbits bite the donkey while you ride
+    this.mountReadyAt = 0; // time (ms) when a donkey that dropped to 0 HP can be summoned again
     this.chatTokens = 3;
     this.chatT = 0;
     this.dirty = false;
@@ -83,8 +85,10 @@ export class Player {
     };
   }
 
-  view() {
+  view(now = 0) {
     return {
+      dh: Math.round(this.mountHp), // donkey HP
+      dr: Math.max(0, Math.round(this.mountReadyAt - now)), // ms until the donkey can be summoned again
       hp: Math.round(this.hp),
       mh: this.maxHp,
       mt: this.mounted ? 1 : 0,

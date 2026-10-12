@@ -2,23 +2,34 @@
 // The client uses this for movement (tol = 0, exact) and the server uses it to check
 // movement packets (tol > 0 shrinks every obstacle a little, so lag and tiny client/server
 // timing differences never push an honest player into a "wall").
-import { PORTAL, CFG } from './data.js';
+import { PORTAL, CFG, TOWN, HOUSES } from './data.js';
 
 const CS = CFG.CS;
 
 export function courtFree(x, z, tol = 0) {
+  if (Math.hypot(x - PORTAL.x, z - PORTAL.z) < 2.5 - tol) return false; // portal base
   const a = Math.abs(x), b = Math.abs(z);
+  if (a > TOWN.half + 3 || b > TOWN.half + 3) return true; // open country
+  const H = TOWN.half, G = TOWN.gate;
+  // Town wall (2 thick) with a gate in the middle of every side, and a round tower on each corner
+  if (Math.abs(a - H) < 1 - tol && b < H + 1 - tol && b > G + tol) return false; // east / west walls
+  if (Math.abs(b - H) < 1 - tol && a < H + 1 - tol && a > G + tol) return false; // north / south walls
+  if (Math.hypot(a - H, b - H) < 3.5 - tol) return false;
+  for (const h of HOUSES) {
+    if (Math.abs(x - h.x) < h.w / 2 - tol && Math.abs(z - h.z) < h.d / 2 - tol) return false;
+  }
+  if (Math.hypot(x - TOWN.fountain.x, z - TOWN.fountain.z) < TOWN.fountain.r - tol) return false;
+  if (a > 14 || b > 14) return true; // everything below is inside the Crafting Hall
   // station counter row + back wall
   if (a < 11.6 - tol && z > -8.2 + tol && z < -5.2 - tol) return false;
   // pillars
   if (Math.abs(z + 3.5) < 0.75 - tol && (Math.abs(a - 3) < 0.75 - tol || Math.abs(a - 10.5) < 0.75 - tol)) return false;
-  // outer walls (the south wall has a gap in the middle)
+  // hall walls (the south wall has a gap in the middle)
   if (a < 13.5 && b < 13.5) {
     if (Math.abs(a - 12) < 1 - tol && b < 12.8) return false;
     if (Math.abs(z + 12) < 1 - tol && a < 12.8) return false;
     if (Math.abs(z - 12) < 1 - tol && a > 3 + tol && a < 12.8) return false;
   }
-  if (Math.hypot(x - PORTAL.x, z - PORTAL.z) < 2.5 - tol) return false;
   return true;
 }
 

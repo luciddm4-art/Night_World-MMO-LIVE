@@ -3,10 +3,10 @@
 // Room knows nothing about sockets: players have a send(obj) function, and the
 // clock/RNG are injectable, which keeps it fully unit-testable.
 import {
-  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN, REWARD_SLOTS, weaponOf, weaponIdOf,
+  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN, REWARD_SLOTS, inSafeZone, weaponOf, weaponIdOf,
 } from '../shared/data.js';
 import { createWorld } from '../shared/world.js';
-import { sweep } from '../shared/collision.js';
+import { sweep, isFree } from '../shared/collision.js';
 import * as Inv from '../shared/inventory.js';
 import { round2 } from './player.js';
 
@@ -38,6 +38,15 @@ export class Room {
   }
 
   // ------------------------------------------------------------ membership
+  // A saved position can end up inside a wall or house after the world changed: move such players to the plaza.
+  ensureStandable(p) {
+    if (isFree(this.world, (k) => !this.isDepleted(k), p.x, p.z)) return false;
+    p.setSpawn(this.rng);
+    p.mounted = false;
+    p.donkey = null;
+    return true;
+  }
+
   addPlayer(p) {
     this.players.set(p.id, p);
     this.emptySince = null;
@@ -63,7 +72,7 @@ export class Room {
       seed: this.seed,
       you: {
         x: round2(p.x), z: round2(p.z), r: round2(p.r), c: p.color,
-        ...p.view(), inv: p.inv, st: this.statsOf(p),
+        ...p.view(this.now()), inv: p.inv, st: this.statsOf(p),
       },
       depleted: [...this.depleted].map(([id, s]) => [id, s.qty]),
       chat: this.chatLog.slice(-20),
@@ -120,7 +129,7 @@ export class Room {
     // no matter how many (or how few) position packets you send.
     const dtS = Math.max(0, (now - p.lastPosT) / 1000);
     p.lastPosT = now;
-    const vmax = CFG.MAX_SPEED * (p.mounted ? CFG.MOUNT_SPEED : 1) * 1.15;
+    const vmax = CFG.WALK_SPEED * (p.mounted ? CFG.MOUNT_SPEED : 1) * 1.15;
     p.moveBudget = Math.min(vmax * 1.5, p.moveBudget + vmax * dtS);
     const d = dist(x, z, p.x, p.z);
     let nx = x, nz = z;
@@ -329,24 +338,38 @@ export class Room {
   }
 
   // ------------------------------------------------------------ mount
+  mountWait(p) { return Math.max(0, p.mountReadyAt - this.now()); }
   onMount(p) {
     if (p.mounted || p.gather) return;
+    if (!p.hasMount()) return this.fail(p, 'No donkey equipped');
+    const wait = this.mountWait(p);
+    if (wait > 0) return this.fail(p, 'The donkey is recovering (' + Math.ceil(wait / 1000) + 's)');
     if (p.donkey && dist(p.x, p.z, p.donkey.x, p.donkey.z) < 2.5 + 1) {
       p.mounted = true;
       p.donkey = null;
       p.dirty = true;
       return this.toast(p, 'Mounted');
     }
-    if (!p.hasMount()) return this.fail(p, 'No donkey equipped');
     p.gather = { kind: 'mount', id: '', start: this.now(), x: p.x, z: p.z, dur: CFG.MOUNT_CAST_MS };
     p.send({ t: 'cast', kind: 'mount', id: '', dur: CFG.MOUNT_CAST_MS });
   }
   mountFinish(p) {
-    if (!p.hasMount()) return;
+    if (!p.hasMount() || this.mountWait(p) > 0) return;
     p.mounted = true;
     p.donkey = null;
     p.dirty = true;
     this.toast(p, 'Mounted');
+  }
+  // Rabbit bites hit the donkey instead of the rider. At 0 HP the rider falls off and the donkey is gone for 30 s.
+  damageMount(p, amount, now, by) {
+    p.mountHp = Math.max(0, p.mountHp - amount);
+    p.send({ t: 'hurt', d: Math.round(amount), by, m: 1 });
+    if (p.mountHp > 0) return;
+    p.mounted = false;
+    p.donkey = null;
+    p.mountReadyAt = now + CFG.MOUNT_RECALL_MS;
+    p.dirty = true;
+    this.toast(p, 'Your donkey is exhausted! It can be summoned again in ' + CFG.MOUNT_RECALL_MS / 1000 + 's');
   }
   onDismount(p) {
     if (!p.mounted) return;
@@ -426,26 +449,27 @@ export class Room {
         const dx = rb.tx - rb.x, dz = rb.tz - rb.z, dl = Math.hypot(dx, dz);
         if (dl > 0.3) {
           const sp = 1.2 * dt;
-          rb.x += (dx / dl) * sp;
-          rb.z += (dz / dl) * sp;
+          const nx = rb.x + (dx / dl) * sp, nz = rb.z + (dz / dl) * sp;
+          if (!inSafeZone(nx, nz)) { rb.x = nx; rb.z = nz; } else rb.wt = 0; // rabbits never wander into the town
         }
         continue;
       }
       const t = this.players.get(rb.target);
       if (!t) { rb.mode = 'wander'; rb.target = null; continue; }
       const pdx = t.x - rb.x, pdz = t.z - rb.z, pd = Math.hypot(pdx, pdz);
-      if (pd > 12) { rb.mode = 'wander'; rb.target = null; }
+      if (pd > 12 || inSafeZone(t.x, t.z)) { rb.mode = 'wander'; rb.target = null; } // the town is a safe zone
       else if (pd < 1.5) {
         rb.mode = 'attack';
         if (now - rb.atkT > CFG.RABBIT_ATK_MS) {
           rb.atkT = now;
-          if (!t.mounted) this.damagePlayer(t, CFG.RABBIT_DMG * (1 - t.stats.def), now, rb.id);
+          if (t.mounted) this.damageMount(t, CFG.RABBIT_DMG, now, rb.id);
+          else this.damagePlayer(t, CFG.RABBIT_DMG * (1 - t.stats.def), now, rb.id);
         }
       } else {
         rb.mode = 'chase';
         const sp = 2.6 * dt;
-        rb.x += (pdx / pd) * sp;
-        rb.z += (pdz / pd) * sp;
+        const nx = rb.x + (pdx / pd) * sp, nz = rb.z + (pdz / pd) * sp;
+        if (!inSafeZone(nx, nz)) { rb.x = nx; rb.z = nz; }
       }
     }
   }
@@ -453,6 +477,7 @@ export class Room {
   damagePlayer(p, amount, now, by = null) {
     p.hp -= amount;
     p.lastDamageT = now;
+    if (p.gather && p.gather.kind === 'mount') this.cancelGather(p); // a bite interrupts the donkey summon
     p.send({ t: 'hurt', d: Math.round(amount), by });
     if (p.hp <= 0) {
       p.hp = p.maxHp;
@@ -483,6 +508,13 @@ export class Room {
         p.hp = Math.min(p.maxHp, p.hp + p.maxHp * CFG.REGEN_PER_SEC * dt);
       }
       if (p.gather && now - p.gather.start > GATHER_STALE_MS) p.gather = null;
+      // Donkey HP: a donkey that dropped to 0 is away for 30 s and returns healed; otherwise it heals 0 -> full in 30 s.
+      if (p.mountReadyAt > now) p.mountHp = 0;
+      else if (p.mountReadyAt > 0) {
+        p.mountReadyAt = 0;
+        p.mountHp = CFG.MOUNT_HP;
+        if (p.hasMount()) this.toast(p, 'Your donkey is ready again');
+      } else if (p.mountHp < CFG.MOUNT_HP) p.mountHp = Math.min(CFG.MOUNT_HP, p.mountHp + (CFG.MOUNT_HP * dt * 1000) / CFG.MOUNT_REGEN_MS);
       if (!p.mounted && p.donkey && dist(p.x, p.z, p.donkey.x, p.donkey.z) > CFG.DONKEY_LEASH) {
         p.donkey = null;
         if (Inv.unequip(p.inv, 'mount')) {
@@ -497,6 +529,7 @@ export class Room {
 
   sendSnapshots() {
     if (!this.players.size) return;
+    const now = this.now();
     const list = [...this.players.values()];
     for (const p of list) {
       const pl = [];
@@ -515,7 +548,7 @@ export class Room {
         if (Math.abs(r.x - p.x) > SNAP_RABBIT_R || Math.abs(r.z - p.z) > SNAP_RABBIT_R) continue;
         rb.push({ i: r.id, x: round2(r.x), z: round2(r.z), d: r.dead ? 1 : 0, h: r.hp, a: r.mode === 'chase' || r.mode === 'attack' ? 1 : 0 });
       }
-      p.send({ t: 's', me: p.view(), p: pl, rb, o: list.length });
+      p.send({ t: 's', me: p.view(now), p: pl, rb, o: list.length });
     }
   }
 }

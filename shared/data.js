@@ -17,14 +17,17 @@ export const CFG = {
   PLAYER_BASE_HP: 1200,
   PLAYER_BASE_DMG: 30,
   PLAYER_BASE_ATK_MS: 400,
-  MOUNT_SPEED: 1.15,
-  MOUNT_CAST_MS: 1500,
+  WALK_SPEED: 3, // units / second. There is no sprint.
+  MOUNT_SPEED: 2, // the donkey doubles your speed (x2 = 6 units / second)
+  MOUNT_CAST_MS: 5000, // summoning the donkey takes a 5 second cast
+  MOUNT_HP: 200, // rabbit bites hit the donkey instead of you while you ride
+  MOUNT_RECALL_MS: 30000, // after the donkey drops to 0 HP it is gone this long
+  MOUNT_REGEN_MS: 30000, // time to heal a donkey from 0 to full
   DONKEY_LEASH: 18,
   REGEN_PER_SEC: 0.01,
   REGEN_COMBAT_LOCK: 5000,
   INV_SLOTS: 64,
   STACK_MAX: 99,
-  MAX_SPEED: 16, // sprint speed, units / second
 };
 
 export const SEED_LIMIT = 1e9;
@@ -142,8 +145,28 @@ export const STATIONS = [
 ];
 export const STATION_Z = -4.6;
 export const STATION_RANGE = 2.4;
-export const PORTAL = { x: 0, z: 8, r: 2.6 };
-export const SPAWN = { x: 0, z: -1.5, spread: 6 };
+// The Big Town: a walled 120 x 120 square centred on the Crafting Hall, with a gate in the middle
+// of each side. The portal is far away to the south (about 8 minutes on a donkey, 16 on foot).
+export const TOWN = {
+  half: 60, // wall centre line: |x| or |z| = 60
+  gate: 7, // gates are 14 wide
+  safe: 68, // no trees, nodes or rabbits inside |x|,|z| < this
+  fountain: { x: 0, z: 34, r: 2.8 },
+};
+// Houses: centre x, z and size (w along x, d along z). Streets (|x| < 8 or |z| < 8) stay clear.
+export const HOUSES = [
+  { x: -40, z: -40, w: 12, d: 10 }, { x: -22, z: -46, w: 10, d: 8 }, { x: -48, z: -22, w: 8, d: 10 },
+  { x: 40, z: -40, w: 12, d: 10 }, { x: 22, z: -46, w: 10, d: 8 }, { x: 48, z: -22, w: 8, d: 10 },
+  { x: -40, z: 40, w: 12, d: 10 }, { x: -22, z: 46, w: 10, d: 8 }, { x: -48, z: 22, w: 8, d: 10 },
+  { x: 40, z: 40, w: 12, d: 10 }, { x: 22, z: 46, w: 10, d: 8 }, { x: 48, z: 22, w: 8, d: 10 },
+];
+export const PORTAL = { x: 0, z: 2900, r: 2.6 };
+export const PORTAL_SAFE = 40; // no trees or rabbits within this distance of the portal
+export const SPAWN = { x: 0, z: 22, spread: 6 }; // the plaza, just outside the Hall's south door
+
+// Inside the town walls or around the portal: nothing grows or spawns here.
+export const inSafeZone = (x, z) =>
+  Math.max(Math.abs(x), Math.abs(z)) < TOWN.safe || Math.hypot(x - PORTAL.x, z - PORTAL.z) < PORTAL_SAFE;
 
 export const CHAT_MAX_LEN = 120;
 export const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;

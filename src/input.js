@@ -1,5 +1,5 @@
 // Keyboard, touch joystick and drag-to-look.
-export const input = { keys: {}, joy: null, look: null, sprint: false, yaw: 0, pitch: 0.35 };
+export const input = { keys: {}, joy: null, look: null, yaw: 0, pitch: 0.35 };
 
 export function initInput(canvas, cb) {
   const { keys } = input;
@@ -59,12 +59,6 @@ export function initInput(canvas, cb) {
     }
   };
 
-  const sprintBtn = document.getElementById('sprint');
-  sprintBtn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    input.sprint = !input.sprint;
-    sprintBtn.classList.toggle('on', input.sprint);
-  });
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
 }

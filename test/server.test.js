@@ -6,6 +6,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import { createGameServer } from '../server/index.js';
 import { countItem } from '../shared/inventory.js';
+import { SPAWN } from '../shared/data.js';
 import { PGlite } from '@electric-sql/pglite';
 import { PgBackend } from '../server/store.js';
 
@@ -156,13 +157,13 @@ test('persistence: inventory and position survive logout, and a full server rest
     assert.equal(w.you.z, 40);
     await b.close();
 
-    // a different world starts you in that world's spawn hall, but keeps your stuff
+    // a different world starts you in that world's town plaza, but keeps your stuff
     const c = client(env.url);
     await c.opened;
     c.send({ t: 'auth', mode: 'login', name: 'Saver', pass: 'secret123', seed: 42 });
     const w2 = await c.next('welcome');
     assert.equal(w2.seed, 42);
-    assert.equal(w2.you.z, -1.5);
+    assert.equal(w2.you.z, SPAWN.z);
     assert.equal(w2.you.inv.slots[0].n, 7);
     await c.close();
   } finally { await env.gs.stop(); }

@@ -206,6 +206,7 @@ export function createGameServer(opts = {}) {
         },
       });
       if (!player.restore(saved, seed)) player.setSpawn();
+      else room.ensureStandable(player);
       const entry = { player, room, ws };
       ws.entry = entry;
       if (key) online.set(key, entry);
