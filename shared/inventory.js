@@ -1,6 +1,6 @@
 // Pure inventory / stats logic. The server owns the inventory; these helpers
 // never touch the DOM or the network, so they are easy to test.
-import { CFG, ITEMS, EQUIP_SLOTS, SLOT_ACCEPTS, ARMOR_STATS } from './data.js';
+import { CFG, ITEMS, EQUIP_SLOTS, SLOT_ACCEPTS, ARMOR_STATS, LEGACY_REFUND } from './data.js';
 
 export function newInv() {
   const eq = {};
@@ -118,5 +118,21 @@ export function sanitizeInv(raw) {
       if (e && SLOT_ACCEPTS[slot].includes(e.id)) inv.eq[slot] = { id: e.id, n: 1 };
     }
   }
+  // Items that no longer exist (gloves) are refunded as refined materials, so nobody loses value.
+  const refund = {};
+  const owe = (id, n) => {
+    const r = LEGACY_REFUND[id];
+    if (r) refund[r.id] = (refund[r.id] || 0) + r.n * n;
+  };
+  if (Array.isArray(raw.slots)) {
+    for (let i = 0; i < CFG.INV_SLOTS; i++) {
+      const s = raw.slots[i];
+      if (s && Number.isInteger(s.n) && s.n > 0) owe(s.id, s.n);
+    }
+  }
+  if (raw.eq && typeof raw.eq === 'object') {
+    for (const k of Object.keys(raw.eq)) if (raw.eq[k]) owe(raw.eq[k].id, 1);
+  }
+  for (const id of Object.keys(refund)) addItem(inv, id, refund[id]);
   return inv;
 }

@@ -31,7 +31,39 @@ export function burst(x, y, z, o = {}) {
   }
 }
 
+// ------------------------------------------------------------ weapon effects
+// A "shot" is a glowing head that flies forward leaving a trail of particles: arrows and fireballs.
+const shots = [];
+const SHOT = {
+  bow: { speed: 70, color: 0xf2e6c0, n: 2, life: 0.22, grav: 0 },
+  fire_staff: { speed: 22, color: 0xff7a2a, n: 5, life: 0.4, grav: -3 },
+};
+function shoot(x, y, z, r, len, kind) {
+  const k = SHOT[kind];
+  shots.push({ x, y, z, dx: Math.sin(r), dz: Math.cos(r), left: len, k });
+}
+// Called for every swing: yours and other players'. len = how far a projectile flies.
+export function attackFx(x, y, z, r, wid, len) {
+  if (wid === 'sword') {
+    for (let a = -1; a <= 1.01; a += 0.25) burst(x + Math.sin(r + a) * 1.7, y + 1.1 + (0.5 - Math.abs(a)) * 0.2, z + Math.cos(r + a) * 1.7, { n: 2, color: 0xdfe8ff, speed: 0.4, up: 0.3, life: 0.22, grav: 0 });
+  } else if (SHOT[wid]) {
+    shoot(x + Math.sin(r) * 0.7, y + 1.3, z + Math.cos(r) * 0.7, r, len || 8, wid);
+    if (wid === 'fire_staff') burst(x + Math.sin(r) * 0.9, y + 1.3, z + Math.cos(r) * 0.9, { n: 8, color: 0xffa030, speed: 1.2, up: 0.5, life: 0.3, grav: -1 });
+  }
+}
+
 export function updateFx(dt) {
+  for (let i = shots.length - 1; i >= 0; i--) {
+    const sh = shots[i], step = Math.min(sh.left, sh.k.speed * dt);
+    // emit along the path travelled this frame so fast arrows stay a continuous streak
+    const m = Math.max(1, Math.ceil(step / 0.6));
+    for (let j = 1; j <= m; j++) {
+      const f = (step * j) / m;
+      burst(sh.x + sh.dx * f, sh.y, sh.z + sh.dz * f, { n: sh.k.n, color: sh.k.color, speed: 0.25, up: 0.15, life: sh.k.life, grav: sh.k.grav });
+    }
+    sh.x += sh.dx * step; sh.z += sh.dz * step; sh.left -= step;
+    if (sh.left <= 0.001) shots.splice(i, 1);
+  }
   let n = 0;
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];

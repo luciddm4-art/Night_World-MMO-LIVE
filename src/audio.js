@@ -62,6 +62,10 @@ function noise(dur, { vol = 0.3, f0 = 1500, f1 = 600, q = 1, delay = 0 } = {}) {
 
 const SFX = {
   swing: () => noise(0.13, { vol: 0.22, f0: 500, f1: 2400, q: 0.8 }),
+  slash: () => { noise(0.16, { vol: 0.26, f0: 900, f1: 4200, q: 1.2 }); tone(1400, 700, 0.08, { type: 'triangle', vol: 0.06 }); },
+  bow: () => { tone(900, 260, 0.14, { type: 'triangle', vol: 0.22 }); noise(0.1, { vol: 0.14, f0: 3500, f1: 1200, q: 2 }); },
+  fire: () => { noise(0.35, { vol: 0.3, f0: 300, f1: 1800, q: 0.6 }); tone(180, 520, 0.3, { type: 'sawtooth', vol: 0.1 }); },
+  burn: () => { noise(0.22, { vol: 0.28, f0: 1400, f1: 300, q: 0.5 }); tone(120, 60, 0.2, { type: 'triangle', vol: 0.3 }); },
   hit: () => { tone(160, 60, 0.12, { type: 'triangle', vol: 0.4 }); noise(0.08, { vol: 0.25, f0: 2000, f1: 800 }); },
   kill: () => { tone(220, 70, 0.28, { type: 'triangle', vol: 0.4 }); tone(330, 110, 0.2, { type: 'square', vol: 0.12, delay: 0.05 }); },
   tick: () => noise(0.05, { vol: 0.16, f0: 2600, f1: 1800, q: 3 }),

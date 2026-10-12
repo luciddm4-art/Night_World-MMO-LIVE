@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeRoom, makePlayer, findThings, giveItems, fillBag } from './helpers.js';
 import { countItem } from '../shared/inventory.js';
-import { CFG, STATIONS, STATION_Z } from '../shared/data.js';
+import { CFG, STATIONS, STATION_Z, RECIPES, FAMILIES, ITEMS, EQUIP_SLOTS, REWARD_SLOTS, WEAPONS, FISTS } from '../shared/data.js';
+import { sanitizeInv } from '../shared/inventory.js';
 import { isFree, courtFree } from '../shared/collision.js';
 
 const { tree, node, world } = findThings(7);
+
+// stand at a crafting station
+const atStation = (p, key) => { const st = STATIONS.find((x) => x.k === key); p.x = st.x; p.z = STATION_Z; };
+const giveSword = (p) => { p.inv.eq.main = { id: 'sword', n: 1 }; p.recalc(); };
 
 // a stretch of open ground running along +x (no trees, outside the spawn hall)
 function openRun(len = 130) {
@@ -122,9 +127,10 @@ test('crafting: needs materials, and refining needs the station', () => {
   room.handle(p, { t: 'craft', id: 'nope' }); // unknown recipe: silently ignored
 });
 
-test('crafting: portable recipes work anywhere; client cannot choose the output', () => {
+test('crafting: the client cannot choose the output', () => {
   const { room } = makeRoom();
   const p = makePlayer(room, 'a');
+  atStation(p, 'forge');
   giveItems(p, 'iron', 3);
   room.handle(p, { t: 'craft', id: 'c_ihelm', out: 'donkey', n: 50 });
   assert.equal(countItem(p.inv, 'iron_helm'), 1);
@@ -134,11 +140,13 @@ test('crafting: portable recipes work anywhere; client cannot choose the output'
 test('crafting: refuses if the result would not fit, and spends nothing', () => {
   const { room } = makeRoom();
   const p = makePlayer(room, 'a');
+  atStation(p, 'forge');
   fillBag(p, 'wood');
   p.inv.slots[0] = { id: 'iron', n: 3 }; // crafting uses it up, but the freed slot is fine -> allowed
   room.handle(p, { t: 'craft', id: 'c_ihelm' });
   assert.equal(countItem(p.inv, 'iron_helm'), 1);
   const q = makePlayer(room, 'b');
+  atStation(q, 'forge');
   fillBag(q, 'wood');
   q.inv.slots[0] = { id: 'iron', n: 5 }; // helm costs 3: leaves 2, no free slot for the helm
   room.handle(q, { t: 'craft', id: 'c_ihelm' });
@@ -147,13 +155,13 @@ test('crafting: refuses if the result would not fit, and spends nothing', () => 
 });
 
 // ------------------------------------------------------------------ equipment
-test('equipment: stats change, and filling all 6 slots rewards a donkey once', () => {
+test('equipment: stats change, and filling all 5 gear slots rewards a donkey once', () => {
   const { room } = makeRoom();
   const p = makePlayer(room, 'a');
-  const gear = ['iron_helm', 'iron_chest', 'iron_gauntlets', 'iron_boots', 'sword', 'spell_book'];
+  const gear = ['iron_helm', 'iron_chest', 'iron_boots', 'sword', 'spell_book'];
   gear.forEach((g) => giveItems(p, g, 1));
   gear.forEach((g) => room.handle(p, { t: 'equip', i: p.inv.slots.findIndex((s) => s && s.id === g) }));
-  assert.equal(p.maxHp, Math.round(1200 * (1 + 0.03 * 3 + 0.5)));
+  assert.equal(p.maxHp, Math.round(1200 * (1 + 0.03 * 2 + 0.5)));
   assert.equal(p.stats.def, 0.2);
   assert.equal(countItem(p.inv, 'donkey'), 1);
   assert.ok(p.all('toast').some((t) => t.m.includes('Donkey')));
@@ -226,14 +234,15 @@ function spawnRabbitNear(room, p) {
   return rb;
 }
 
-test('combat: two hits kill a rabbit, the cooldown is enforced, corpse gives hide', () => {
+test('combat: two sword hits kill a rabbit, the cooldown is enforced, corpse gives hide', () => {
   const { room, now } = makeRoom();
   const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  giveSword(p);
   const rb = spawnRabbitNear(room, p);
   room.handle(p, { t: 'atk', r: 0 }); // facing +z
-  assert.equal(rb.hp, CFG.RABBIT_HP - 30);
+  assert.equal(rb.hp, CFG.RABBIT_HP - 36);
   room.handle(p, { t: 'atk', r: 0 }); // too soon
-  assert.equal(rb.hp, CFG.RABBIT_HP - 30, 'cooldown');
+  assert.equal(rb.hp, CFG.RABBIT_HP - 36, 'cooldown');
   now.advance(450);
   room.handle(p, { t: 'atk', r: 0 });
   assert.ok(rb.dead);
@@ -264,7 +273,7 @@ test('combat: gear raises damage (cloth robe = +50%)', () => {
   p.recalc();
   const rb = spawnRabbitNear(room, p);
   room.handle(p, { t: 'atk', r: 0 });
-  assert.equal(rb.hp, CFG.RABBIT_HP - 45);
+  assert.equal(rb.hp, CFG.RABBIT_HP - 30); // fists 20 x 1.5
 });
 
 test('combat: a hurt rabbit chases and bites; being knocked out resets HP; armor helps', () => {
@@ -424,16 +433,17 @@ test('events: hits are announced with real damage, to everyone nearby', () => {
   const p = makePlayer(room, 'a', { x: 100, z: 100 });
   const bystander = makePlayer(room, 'near', { x: 105, z: 100 });
   const far = makePlayer(room, 'far', { x: 900, z: 900 });
+  giveSword(p);
   const rb = spawnRabbitNear(room, p);
   room.handle(p, { t: 'atk', r: 0 });
   const h = p.last('hit');
-  assert.deepEqual([h.i, h.d, h.h, h.k], [rb.id, 30, 20, 0]);
+  assert.deepEqual([h.i, h.d, h.h, h.k, h.w, h.sp], [rb.id, 36, 14, 0, 'sword', 0]);
   assert.ok(bystander.last('hit'), 'a nearby player sees it too');
   assert.equal(far.last('hit'), undefined);
   now.advance(450);
   room.handle(p, { t: 'atk', r: 0 });
   const k = p.last('hit');
-  assert.deepEqual([k.d, k.h, k.k], [30, 0, 1]);
+  assert.deepEqual([k.d, k.h, k.k], [36, 0, 1]);
 });
 
 test('events: a rejected attack (cooldown / miss) produces no hit event', () => {
@@ -463,6 +473,7 @@ test('events: bites tell the victim how much it hurt; gathers, loot and crafts r
   room.handle(q, { t: 'gdone' });
   assert.deepEqual(q.last('gain'), { t: 'gain', item: 'wood', n: 1, src: 'gather' });
   giveItems(q, 'iron', 3);
+  atStation(q, 'forge');
   room.handle(q, { t: 'craft', id: 'c_ihelm' });
   assert.deepEqual(q.last('gain'), { t: 'gain', item: 'iron_helm', n: 1, src: 'craft' });
 });
@@ -534,4 +545,216 @@ test('collision: client and server agree on the hall layout', () => {
   assert.equal(courtFree(12, 0), false);
   assert.equal(courtFree(0, 8), false, 'the portal');
   assert.equal(courtFree(0, 12), true, 'the gap in the south wall');
+});
+
+
+// ---------------------------------------------------------------- crafting system: families and stations
+test('recipes: every recipe has a station, and each station only handles its own material family', () => {
+  const famOf = Object.fromEntries(STATIONS.map((st) => [st.k, FAMILIES[st.fam]]));
+  for (const st of STATIONS) assert.ok(FAMILIES[st.fam], st.k + ' has a family');
+  for (const r of RECIPES) {
+    assert.ok(famOf[r.station], r.id + ' has a valid station (' + r.station + ')');
+    const fam = famOf[r.station];
+    if (r.cat === 'Refine') {
+      assert.deepEqual(Object.keys(r.cost), [fam.raw], r.id + ' refines only its own raw resource');
+      assert.equal(r.out, fam.refined, r.id + ' outputs the family material');
+    }
+    if (r.cat === 'Armor') {
+      assert.deepEqual(Object.keys(r.cost), [fam.refined], r.id + ' uses only ' + fam.refined);
+    }
+    if (r.cat === 'Weapons') {
+      assert.ok(r.cost[fam.refined] && r.cost.plank, r.id + ' needs planks plus this station\'s own refined material');
+    }
+  }
+  // all four raw resources and all four refined materials are covered
+  assert.deepEqual(RECIPES.filter((r) => r.cat === 'Refine').map((r) => r.out).sort(), ['cloth', 'iron', 'leather', 'plank']);
+});
+
+test('recipes: 3 armor sets x (head, chest, foot) and 3 weapons, no gloves', () => {
+  const armor = RECIPES.filter((r) => r.cat === 'Armor');
+  assert.equal(armor.length, 9);
+  assert.deepEqual(armor.map((r) => r.name).sort(), [
+    'Cloth Cowl', 'Cloth Robe', 'Cloth Sandals', 'Iron Armor', 'Iron Boots', 'Iron Helmet', 'Leather Hood', 'Leather Jacket', 'Leather Shoes',
+  ]);
+  assert.deepEqual(RECIPES.filter((r) => r.cat === 'Weapons').map((r) => r.out).sort(), ['bow', 'fire_staff', 'sword']);
+  assert.ok(!EQUIP_SLOTS.includes('hands'));
+  assert.ok(!Object.keys(ITEMS).some((k) => /glove|gauntlet/.test(k)));
+  for (const k of Object.keys(ITEMS)) assert.equal(ITEMS[k].tier, 1, k + ' is tier 1');
+});
+
+test('crafting: a station only crafts its own recipes (Loom cannot make iron gear)', () => {
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a');
+  giveItems(p, 'iron', 10);
+  giveItems(p, 'cloth', 10);
+  atStation(p, 'loom');
+  room.handle(p, { t: 'craft', id: 'c_ihelm' });
+  assert.match(p.last('fail').m, /closer to the Forge/);
+  room.handle(p, { t: 'craft', id: 'c_ccowl' });
+  assert.equal(countItem(p.inv, 'cloth_cowl'), 1);
+  atStation(p, 'forge');
+  room.handle(p, { t: 'craft', id: 'c_ihelm' });
+  assert.equal(countItem(p.inv, 'iron_helm'), 1);
+});
+
+test('crafting: the full chain works (resource -> refined -> gear -> weapon)', () => {
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a');
+  giveItems(p, 'wood', 3); giveItems(p, 'hide', 9); giveItems(p, 'ore', 0);
+  atStation(p, 'refinery'); room.handle(p, { t: 'craft', id: 'r_plank' });
+  giveItems(p, 'wood', 9);
+  for (let i = 0; i < 3; i++) room.handle(p, { t: 'craft', id: 'r_plank' }); // 4 planks total
+  atStation(p, 'tannery');
+  for (let i = 0; i < 3; i++) room.handle(p, { t: 'craft', id: 'r_leather' });
+  room.handle(p, { t: 'craft', id: 'c_bow' }); // 4 planks + 2 leather
+  assert.equal(countItem(p.inv, 'bow'), 1);
+  room.handle(p, { t: 'craft', id: 'c_lhood' }); // 3 leather? only 1 left
+  assert.match(p.last('fail').m, /Not enough/);
+});
+
+// ---------------------------------------------------------------- weapons
+function rabbitAt(room, id, x, z) {
+  const rb = { id, x, z, hp: CFG.RABBIT_HP, mode: 'wander', tx: x, tz: z, wt: 1e9, atkT: 0, dead: false, gathered: false, deadAt: 0, target: null, home: '0,0' };
+  room.rabbits.set(id, rb);
+  return rb;
+}
+const arm = (p, id) => { p.inv.eq.main = id ? { id, n: 1 } : null; p.recalc(); };
+
+test('weapons: stats table is sane', () => {
+  assert.deepEqual(Object.keys(WEAPONS).sort(), ['bow', 'fire_staff', 'sword']);
+  assert.ok(WEAPONS.bow.reach > WEAPONS.fire_staff.reach && WEAPONS.fire_staff.reach > WEAPONS.sword.reach && WEAPONS.sword.reach > FISTS.reach);
+  assert.ok(WEAPONS.sword.dmg > WEAPONS.bow.dmg && WEAPONS.sword.dmg > FISTS.dmg);
+});
+
+test('weapons: fists are slow and weak (3 hits, 500 ms)', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  const rb = rabbitAt(room, 'r1', 100, 101);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(rb.hp, 30);
+  now.advance(380);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(rb.hp, 30, 'still on cooldown at 380 ms');
+  now.advance(120);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(rb.hp, 10, 'second hit after 500 ms');
+  now.advance(520);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.ok(rb.dead);
+});
+
+test('weapons: sword hits everything in its wide arc, but not beyond its reach', () => {
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  arm(p, 'sword');
+  const a = rabbitAt(room, 'a', 100, 101.5), b = rabbitAt(room, 'b', 101.5, 100.8), far = rabbitAt(room, 'far', 100, 105);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(a.hp, 14); assert.equal(b.hp, 14);
+  assert.equal(far.hp, 50, 'out of reach');
+});
+
+test('weapons: bow reaches far, needs good aim, and only hits the nearest rabbit in line', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  arm(p, 'bow');
+  const near = rabbitAt(room, 'near', 100, 104), behind = rabbitAt(room, 'behind', 100, 107), side = rabbitAt(room, 'side', 104, 102);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(near.hp, 26, 'bow does 24');
+  assert.equal(behind.hp, 50, 'arrow stops at the first target');
+  assert.equal(side.hp, 50, 'poorly aimed rabbit is missed');
+  now.advance(700);
+  near.hp = 50;
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(near.hp, 50, 'bow cooldown is 800 ms');
+  const far = rabbitAt(room, 'toofar', 100, 120);
+  now.advance(200);
+  far.z = 100 + WEAPONS.bow.reach + 1.5; // beyond reach + lag tolerance
+  const before = far.hp;
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(far.hp, before);
+});
+
+test('weapons: fire staff burns the target and splashes nearby rabbits', () => {
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  arm(p, 'fire_staff');
+  const main = rabbitAt(room, 'm', 100, 104);
+  const close = rabbitAt(room, 'c', 101.5, 104.5); // within 2.5 of the target
+  const away = rabbitAt(room, 'x', 106, 104); // too far from the target
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(main.hp, 30);
+  assert.equal(close.hp, 38, 'splash 12');
+  assert.equal(away.hp, 50);
+  const hits = p.all('hit');
+  assert.equal(hits.length, 2);
+  assert.deepEqual(hits.map((h) => h.sp).sort(), [0, 1]);
+  assert.ok(hits.every((h) => h.w === 'fire_staff'));
+});
+
+test('weapons: splash can finish a rabbit and gear multiplies weapon damage', () => {
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  arm(p, 'fire_staff');
+  p.inv.eq.chest = { id: 'cloth_robe', n: 1 }; p.recalc(); // +50% damage
+  const main = rabbitAt(room, 'm', 100, 104), weak = rabbitAt(room, 'w', 100.5, 104);
+  weak.hp = 10;
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(main.hp, 50 - 30, 'staff 20 x 1.5');
+  assert.ok(weak.dead, 'splash 18 kills a 10 HP rabbit');
+  assert.equal(p.all('hit').find((h) => h.i === 'w').k, 1);
+});
+
+test('weapons: leather speed shortens the cooldown; a torch fights like fists', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  arm(p, 'torch');
+  const rb = rabbitAt(room, 'r', 100, 101);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(rb.hp, 30, 'torch = fists (20 dmg)');
+  p.stats.haste = 0.5; // pretend lots of leather
+  now.advance(300);
+  room.handle(p, { t: 'atk', r: 0 });
+  assert.equal(rb.hp, 10, '250 ms cooldown with 50% haste');
+});
+
+test('weapons: other players see what you hold (snapshot field w)', () => {
+  const { room } = makeRoom();
+  const a = makePlayer(room, 'a', { x: 100, z: 100 }), b = makePlayer(room, 'b', { x: 102, z: 100 });
+  arm(a, 'bow');
+  room.tick();
+  assert.equal(b.last('s').p.find((q) => q.id === 'a').w, 'bow');
+  assert.equal(a.last('s').me.w, 'bow');
+  arm(a, null);
+  room.tick();
+  assert.equal(b.last('s').p.find((q) => q.id === 'a').w, 0);
+});
+
+// ---------------------------------------------------------------- gloves were removed
+test('migration: old gloves are refunded as refined materials, nothing else is touched', () => {
+  const raw = {
+    eq: { head: { id: 'iron_helm', n: 1 }, hands: { id: 'iron_gauntlets', n: 1 }, main: { id: 'sword', n: 1 } },
+    slots: [{ id: 'cloth_gloves', n: 2 }, { id: 'wood', n: 7 }, { id: 'leather_gloves', n: 1 }, null],
+  };
+  const inv = sanitizeInv(raw);
+  assert.equal(countItem(inv, 'iron'), 3, 'equipped gauntlets -> 3 iron bars');
+  assert.equal(countItem(inv, 'cloth'), 6, '2 cloth gloves -> 6 cloth');
+  assert.equal(countItem(inv, 'leather'), 3);
+  assert.equal(countItem(inv, 'wood'), 7);
+  assert.equal(inv.eq.head.id, 'iron_helm');
+  assert.equal(inv.eq.main.id, 'sword');
+  assert.equal('hands' in inv.eq, false);
+  assert.ok(!JSON.stringify(inv).match(/glove|gauntlet/));
+  // loading the already-migrated inventory again must not refund twice
+  const again = sanitizeInv(JSON.parse(JSON.stringify(inv)));
+  assert.equal(countItem(again, 'iron'), 3);
+  assert.equal(countItem(again, 'cloth'), 6);
+});
+
+test('donkey reward: needs head, chest, foot, main and off hand (5 slots)', () => {
+  assert.deepEqual(REWARD_SLOTS, ['head', 'chest', 'foot', 'main', 'off']);
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a');
+  ['iron_helm', 'iron_chest', 'iron_boots', 'sword'].forEach((g) => giveItems(p, g, 1));
+  ['iron_helm', 'iron_chest', 'iron_boots', 'sword'].forEach((g) => room.handle(p, { t: 'equip', i: p.inv.slots.findIndex((s) => s && s.id === g) }));
+  assert.equal(countItem(p.inv, 'donkey'), 0, 'four slots is not enough');
 });

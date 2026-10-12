@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createGameServer } from '../server/index.js';
+import * as Inv from '../shared/inventory.js';
+import { STATIONS, STATION_Z } from '../shared/data.js';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_PATH || 'playwright');
 const out = process.env.E2E_OUT || fs.mkdtempSync(path.join(os.tmpdir(), 'nwo-e2e-shots-'));
@@ -87,10 +89,53 @@ await A.evaluate(() => { window.__nwo.S.P.r = 0; });
 await wait(300);
 await A.click('#atk'); await wait(200);
 const nums = await A.evaluate(() => [...document.querySelectorAll('#fx .floater')].map((e) => e.textContent));
-ok(nums.includes('30'), 'floating damage number shown: ' + JSON.stringify(nums));
+ok(nums.includes('20'), 'floating damage number shown (fists = 20): ' + JSON.stringify(nums));
 await A.screenshot({ path: out + '/combat.png' });
-await wait(700); await A.click('#atk'); await wait(500);
-ok(rab.hp === 0 || rab.dead, 'attack button damaged the rabbit server-side');
+await wait(700); await A.click('#atk'); await wait(700); await A.click('#atk'); await wait(400);
+ok(rab.hp === 0 || rab.dead, 'attack button damaged the rabbit server-side (3 fist hits)');
+
+// crafting happens only at stations
+await A.keyboard.press('c'); await wait(300);
+ok(/Go to a crafting station/.test(await A.textContent('#toasts')), 'C away from a station says to go to one');
+ok((await A.evaluate(() => document.getElementById('panel').style.display)) !== 'block', 'no portable crafting panel');
+const forge = STATIONS.find((s) => s.k === 'forge');
+const home = { x: player.x, z: player.z };
+player.x = forge.x; player.z = STATION_Z;
+await A.evaluate((f) => { window.__nwo.S.P.x = f.x; window.__nwo.S.P.z = f.z; }, { x: forge.x, z: STATION_Z });
+Inv.addItem(player.inv, 'plank', 6); Inv.addItem(player.inv, 'iron', 6);
+room.sendInv(player);
+await wait(500);
+await A.keyboard.press('c'); await wait(300);
+const panelTxt = await A.textContent('#panel');
+ok(/Forge/.test(panelTxt) && /Sword/.test(panelTxt) && /Iron Helmet/.test(panelTxt) && !/Leather Hood|Cloth Robe|Bow/.test(panelTxt), 'C at the Forge opens only Forge recipes');
+await A.click('#panel button[data-a="c:c_sword"]'); await wait(500);
+ok(Inv.countItem(player.inv, 'sword') === 1, 'crafted a Sword at the Forge');
+await A.click('#panel button[data-a="close"]');
+const swordIdx = player.inv.slots.findIndex((s) => s && s.id === 'sword');
+await A.evaluate((i) => document.querySelectorAll('#grid .islot')[i].click(), swordIdx);
+await wait(600);
+ok(await A.evaluate(() => window.__nwo.me.userData.heldId === 'sword'), 'sword equipped: it shows in the character\'s hand');
+ok(await B.evaluate(() => Object.values(window.__nwo.S.others)[0].g.userData.heldId === 'sword'), 'the other player sees the sword too');
+await A.screenshot({ path: out + '/sword.png' });
+
+// bow: long reach
+player.x = home.x; player.z = home.z;
+await A.evaluate((f) => { window.__nwo.S.P.x = f.x; window.__nwo.S.P.z = f.z; window.__nwo.S.P.r = 0; }, home);
+Inv.addItem(player.inv, 'bow', 1);
+room.sendInv(player);
+await wait(300);
+const bowIdx = player.inv.slots.findIndex((s) => s && s.id === 'bow');
+await A.evaluate((i) => document.querySelectorAll('#grid .islot')[i].click(), bowIdx);
+await wait(500);
+const far = { id: 'rab:e2e:2', x: home.x, z: home.z + 7, hp: 50, mode: 'wander', tx: 0, tz: 0, wt: 1e9, atkT: 0, dead: false, gathered: false, deadAt: 0, target: null, home: Math.floor(home.x / 32) + ',' + Math.floor(home.z / 32) };
+room.rabbits.set(far.id, far);
+await wait(400);
+await A.evaluate(() => { window.__nwo.S.P.r = 0; });
+await A.click('#atk'); await wait(150);
+await A.screenshot({ path: out + '/bow.png' });
+await wait(300);
+ok(far.hp === 26, 'bow hit a rabbit 7 units away (24 dmg), hp=' + far.hp);
+ok(await B.evaluate(() => Object.values(window.__nwo.S.others)[0].g.userData.heldId === 'bow'), 'the other player sees the bow');
 
 // settings
 await A.click('#gear');
@@ -100,12 +145,12 @@ const saved = await A.evaluate(() => JSON.parse(localStorage.getItem('nwo_settin
 ok(saved.mute === true && saved.brightness === 1.6, 'sound off + brightness saved');
 await A.click('#set-close');
 const tip = await A.evaluate(() => { const e = document.querySelector('#grid .islot.filled'); return e ? e.title : ''; });
-ok(/Wood/.test(tip) && /Used in/.test(tip), 'inventory tooltip');
+ok(/Wood/.test(tip) && /Used in/.test(tip) && /Tier 1/.test(tip), 'inventory tooltip');
 
 // reload => token login
 await A.reload();
 await A.waitForFunction(() => window.__nwo && window.__nwo.S.ready, null, { timeout: 15000 });
-ok((await woodOf(A)) === 1, 'inventory persisted after reload');
+ok((await woodOf(A)) === 1 && Inv.countItem(player.inv, 'sword') === 1, 'inventory persisted after reload');
 
 // versioned modules via the import map
 const urls = await A.evaluate(() => performance.getEntriesByType('resource').map((r) => r.name).filter((n) => /\/(src|shared)\/[a-z]+\.js/.test(n)));

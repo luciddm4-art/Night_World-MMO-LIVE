@@ -12,13 +12,33 @@ A small browser 3D MMO: gather wood, cotton and ore, hunt rabbits, craft gear at
 | Live (client) | https://luciddm4-art.github.io/Night_World-MMO-LIVE/ |
 | Live (server) | https://night-world-mmo-live.onrender.com (also serves the game itself) |
 
-**Controls** — move: stick / `WASD` · look: drag · sprint: `Shift` · attack: `Space` / Attack button · use/gather/craft: `E` / Use button · inventory: `I` · portable crafting: `C` · chat: `Enter` · `/logout` in chat forgets your saved login on this device.
+**Controls** — move: stick / `WASD` · look: drag · sprint: `Shift` · attack: `Space` / Attack button · use/gather/craft: `E` / Use button · inventory: `I` · open the nearest crafting station: `C` · chat: `Enter` · `/logout` in chat forgets your saved login on this device.
 
 **Connection** — a ping readout (green/yellow/red) sits next to the online count. A short drop shows a small “Reconnecting…” banner and the game keeps rendering; the client retries quickly with back-off, and a silent dead connection (common on phones after switching networks) is detected within ~9 s. Logged-in players come back where they were; guests start a fresh character.
 
 **Phone extras** — a **Sprint** toggle button (above Attack), bigger tap targets, and vibration on hits. **Desktop extras** — left-click the world (without dragging) to attack, hover inventory/equipment slots for stats and recipes. **⚙ Settings** (top right): brightness, sound, vibration, auto-face. They are saved on this device only (`localStorage.nwo_settings`).
 
 **Game feel** — floating damage numbers, hit flash and knockback, rabbit HP bars and a `!` when one is chasing you, screen shake + red vignette when bitten, wood chips / ore sparks while gathering, trees that shake and fall, loot that flies into your inventory, and synthesised sound effects (Web Audio — no audio files). Audio starts after your first tap or key press, as browsers require.
+
+**Crafting & weapons** — there is no portable crafting: you craft by standing at one of the four stations in the spawn hall (`E` or `C` opens it). Each station handles one material family, end to end (everything is Tier 1 for now):
+
+| Station | Refines | Crafts |
+|---|---|---|
+| Refinery | 3 Wood → Plank | Torch |
+| Loom | 3 Cotton → Cloth | Cloth Cowl / Robe / Sandals (damage), Fire Staff, Spell Book |
+| Forge | 3 Ore → Iron Bar | Iron Helmet / Armor / Boots (tank), Sword |
+| Tannery | 3 Hide (from rabbit corpses) → Leather | Leather Hood / Jacket / Shoes (damage + speed), Bow |
+
+Weapons go in the main hand and change how you fight (damage is multiplied by your gear; speed is improved by Leather). Everyone sees what you are holding.
+
+| Weapon | Reach | Damage | Speed | Behaviour |
+|---|---|---|---|---|
+| Fists (or a Torch) | 2.0 | 20 | 0.50 s | |
+| Sword | 2.6 | 36 | 0.45 s | wide arc, hits everything in front |
+| Bow | 9 | 24 | 0.80 s | narrow aim, arrow hits the nearest rabbit in line |
+| Fire Staff | 5.5 | 20 (+12 splash) | 0.90 s | fireball, also scorches rabbits within 2.5 of the target |
+
+The donkey reward needs head, chest, feet, main hand and off hand filled. Gloves were removed: old gloves are refunded as 3 refined materials when you next log in. Items carry a `tier` field so higher-tier worlds can add their own resources later.
 
 **Accounts** — register with a name + password to keep your character (inventory, gear, position per world), or play as a guest (not saved).
 
@@ -56,8 +76,8 @@ test/                   node:test suites
 |---|---|
 | Inventory, equipment, stats, HP | server (client only renders what it is sent) |
 | Gathering (range, 2 s timer, node quantity, respawn, bag space) | server |
-| Crafting (recipe, materials, station proximity, bag space) | server |
-| Rabbits (spawn, wander, chase, bite, death, respawn) and damage | server |
+| Crafting (recipe, materials, being at that recipe's station, bag space) | server |
+| Rabbits (spawn, wander, chase, bite, death, respawn) and damage; weapon reach, aim cone, splash and cooldown | server |
 | Attack cooldown, range, damage | server |
 | Mount / donkey rules | server |
 | Resource nodes are shared | one state per world, broadcast to everyone |

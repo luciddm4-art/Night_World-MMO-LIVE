@@ -1,7 +1,9 @@
 // Other players: created from server snapshots, smoothed locally.
 import { S } from './state.js';
 import { T, scene } from './scene.js';
-import { mkFig, mkNameTag, mkDonkey, animFig, upS, disposeFig } from './figures.js';
+import { mkFig, mkNameTag, mkDonkey, animFig, upS, disposeFig, setHeld } from './figures.js';
+import { attackFx } from './fx.js';
+import { WEAPONS } from '../shared/data.js';
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -21,7 +23,12 @@ export function syncPlayers(list) {
       o = S.others[e.id] = { g, col, a: e.a, donkey: null };
     }
     o.tx = num(e.x); o.tz = num(e.z); o.ty = num(e.y); o.tr = num(e.r);
-    if (e.a !== o.a) { o.a = e.a; o.g.userData.t = performance.now(); } // swing animation
+    setHeld(o.g, e.w); // what they hold is visible to everyone
+    if (e.a !== o.a) { // swing animation + weapon effect
+      o.a = e.a; o.g.userData.t = performance.now();
+      const wp = WEAPONS[e.w];
+      attackFx(o.g.position.x, o.g.position.y, o.g.position.z, o.tr, e.w, wp ? wp.reach : 0);
+    }
     o.m = !!e.m;
   }
   for (const k in S.others) {
