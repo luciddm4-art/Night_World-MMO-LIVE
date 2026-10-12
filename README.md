@@ -80,7 +80,7 @@ Server → client: `welcome`, `auth_err`, `s` (10 Hz snapshot: you, nearby playe
 
 ## Deploying
 
-**Server (Render, free tier):** build `npm install`, start `npm start`. The service also serves the game, so `https://<service>.onrender.com/` works on its own.
+**Server (Render, free tier):** easiest is the included `render.yaml` Blueprint (Render dashboard → New → Blueprint → this repo): it sets build `npm ci --omit=dev`, start `npm start`, health check `/health`, Node 20, and asks you for `DATABASE_URL`. Or create a Web Service by hand with the same settings. Keep the service name `night-world-mmo-live`, because `src/config.js` and the keep-alive workflow use that URL. The service also serves the game, so `https://<service>.onrender.com/` works on its own.
 
 **Client (GitHub Pages):** serve the repo root. The client talks to the hosted Render server when opened from `*.github.io` (see `src/config.js`).
 
