@@ -127,12 +127,17 @@ export function onHit(m) {
   const y = hgt(r.x, r.z);
   floatText(r.x, y + 1.0, r.z, String(m.d), m.k ? 'crit' : 'dmg');
   setBar(r, m.h);
+  const fire = m.w === 'fire_staff';
+  if (fire) { // fire: orange burst, bigger on the primary target, smaller embers on splash victims
+    burst(r.x, y + 0.5, r.z, { n: m.sp ? 8 : 16, color: m.sp ? 0xff9a40 : 0xff6a1a, speed: m.sp ? 1.4 : 2.4, up: 2.2, life: 0.5, grav: -1 });
+    if (!m.sp) burst(r.x, y + 0.3, r.z, { n: 8, color: 0xffd060, speed: 3.2, up: 0.4, life: 0.25, grav: 0 });
+  }
   if (m.k) {
     burst(r.x, y + 0.3, r.z, { n: 18, color: 0xcfc2a8, speed: 2.2, up: 2.5, life: 0.6 });
     sfx('kill');
   } else {
-    burst(r.x, y + 0.4, r.z, { n: 6, color: 0xff8a6a, speed: 1.6, up: 1.5, life: 0.35 });
-    sfx('hit');
+    if (!fire) burst(r.x, y + 0.4, r.z, { n: 6, color: 0xff8a6a, speed: 1.6, up: 1.5, life: 0.35 });
+    sfx(fire ? 'burn' : 'hit');
   }
   if (m.by === S.myId) vibrate(m.k ? 40 : 20);
 }

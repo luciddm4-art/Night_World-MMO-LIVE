@@ -1,9 +1,9 @@
 // Wires everything together and runs the render loop.
-import { CFG } from '../shared/data.js';
+import { CFG, weaponIdOf } from '../shared/data.js';
 import { S } from './state.js';
 import { T, scene, cam, renderer, onResize } from './scene.js';
 import { animateCourtyard } from './courtyard.js';
-import { mkFig, animFig, upS } from './figures.js';
+import { mkFig, animFig, upS, setHeld } from './figures.js';
 import { hgt, updateWorld, isFree, setNodeQty, resetNodes, updateNodeFx } from './terrain.js';
 import { syncRabbits, updateRabbits, clearRabbits, onHit } from './rabbits.js';
 import { burst, floatText, updateFx, updateFloaters, shake, applyShake, hurtFlash, flyGain } from './fx.js';
@@ -13,7 +13,7 @@ import { syncPlayers, updatePlayers, clearPlayers } from './players.js';
 import { on, send, connect, stop } from './net.js';
 import { say, showBoot, updateHPUI, updateHud } from './ui.js';
 import { initInventory, renderInv, toggleInv, invOpen } from './inventory.js';
-import { initPanel, panelState, openCraft, closePanel, renderPanel } from './panel.js';
+import { initPanel, panelState, openNearestStation, closePanel, renderPanel } from './panel.js';
 import { initMount, updateMountButton, applyMountState, updateDonkey } from './mount.js';
 import { initInteract, checkNear, doInteract, onCast, onFail, cancelGather, updateGather } from './interact.js';
 import { initCombat, tryAttack, bindFigure } from './combat.js';
@@ -47,7 +47,7 @@ initInput(renderer.domElement, {
   attack: tryAttack,
   interact: doInteract,
   toggleInv,
-  craft: () => openCraft(null),
+  craft: openNearestStation,
   chat: openChat,
   escape: () => { if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
 });
@@ -195,6 +195,7 @@ function loop() {
   if (P._px === undefined) { P._px = P.x; P._pz = P.z; }
   const psp = Math.min(20, Math.hypot(P.x - P._px, P.z - P._pz) / Math.max(dt, 1e-3));
   P._px = P.x; P._pz = P.z;
+  setHeld(me, weaponIdOf(S.inv.eq));
   upS(me, now);
   animFig(me, dt, S.mounted ? 0 : psp, now);
 
@@ -231,4 +232,4 @@ connect();
 loop();
 
 // handy for debugging / automated tests
-window.__nwo = { S, send };
+window.__nwo = { S, send, me }; // handle for the browser e2e test

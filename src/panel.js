@@ -1,13 +1,14 @@
-import { ITEMS, RECIPES, WORLDS, normalizeSeed } from '../shared/data.js';
+import { ITEMS, RECIPES, WORLDS, STATIONS, STATION_Z, STATION_RANGE, FAMILIES, normalizeSeed } from '../shared/data.js';
 import { S } from './state.js';
 import { send } from './net.js';
+import { say } from './ui.js';
 
 const panel = document.getElementById('panel');
 export const panelState = { type: null, station: null };
 
 const count = (id) => S.inv.slots.reduce((n, s) => n + (s && s.id === id ? s.n : 0), 0);
 const canAfford = (cost) => Object.keys(cost).every((k) => count(k) >= cost[k]);
-const costStr = (cost) => Object.keys(cost).map((k) => cost[k] + ' ' + ITEMS[k].s).join(' + ');
+const costStr = (cost) => Object.keys(cost).map((k) => cost[k] + ' ' + ITEMS[k].n).join(' + ');
 const row = (l, c, a, ok) => '<button class="b" data-a="' + a + '"' + (ok ? '' : ' disabled') + '><span>' + l + '</span><span>' + c + '</span></button>';
 
 export function openCraft(station) {
@@ -15,6 +16,16 @@ export function openCraft(station) {
   panelState.station = station;
   renderPanel();
   panel.style.display = 'block';
+}
+// C key / inventory "Craft" button: crafting only happens at a station, so open the one you are standing at.
+export function openNearestStation() {
+  let best = null, bd = STATION_RANGE;
+  for (const st of STATIONS) {
+    const d = Math.hypot(S.P.x - st.x, S.P.z - STATION_Z);
+    if (d < bd) { bd = d; best = st; }
+  }
+  if (!best) { say('Go to a crafting station: Refinery, Loom, Forge or Tannery'); return; }
+  openCraft(best.k);
 }
 export function openTravel() {
   panelState.type = 'travel';
@@ -31,14 +42,14 @@ export function renderPanel() {
   if (!panelState.type) { panel.style.display = 'none'; return; }
   let h = '';
   if (panelState.type === 'craft') {
-    h += '<h3>Crafting</h3>';
-    h += panelState.station ? '<p><small>at the ' + panelState.station + '</small></p>' : '<p><small>portable workbench</small></p>';
+    const st = STATIONS.find((x) => x.k === panelState.station);
+    if (!st) { closePanel(); return; }
+    const fam = FAMILIES[st.fam];
+    h += '<h3>' + st.name + '</h3>';
+    h += '<p><small>' + ITEMS[fam.raw].n + ' &rarr; ' + ITEMS[fam.refined].n + ' &middot; makes ' + st.fam + ' gear. Tier 1.</small></p>';
     const cats = {};
-    RECIPES.forEach((r) => {
-      if (r.cat === 'Refine' && r.station !== panelState.station) return;
-      (cats[r.cat] || (cats[r.cat] = [])).push(r);
-    });
-    ['Refine', 'Weapons', 'Tools', 'Iron Armor', 'Cloth Armor', 'Leather Armor'].forEach((c) => {
+    RECIPES.filter((r) => r.station === st.k).forEach((r) => (cats[r.cat] || (cats[r.cat] = [])).push(r));
+    ['Refine', 'Armor', 'Weapons', 'Tools'].forEach((c) => {
       if (!cats[c]) return;
       h += '<h4>' + c + '</h4>';
       cats[c].forEach((r) => {

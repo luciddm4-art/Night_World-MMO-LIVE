@@ -35,7 +35,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 #invhead button{position:absolute;right:8px;top:6px;padding:4px 10px;border-radius:6px;border:1px solid rgba(242,211,74,.6);background:rgba(242,211,74,.15);color:#f2d34a;font:700 11px Georgia,serif}
 #invbody{display:none;padding:8px;border-top:1px solid rgba(242,211,74,.25);max-height:54vh;overflow:auto}
 #inv.open #invbody{display:block}
-#eq{display:grid;grid-template-columns:repeat(7,34px);gap:4px;justify-content:center;margin-bottom:8px}
+#eq{display:grid;grid-template-columns:repeat(6,34px);gap:4px;justify-content:center;margin-bottom:8px}
 .eqslot{width:34px;height:34px;border:1px solid rgba(242,211,74,.4);border-radius:6px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);font-size:11px;font-weight:700;color:rgba(242,211,74,.5);position:relative}
 .eqslot.filled{background:rgba(242,211,74,.22);border-color:#f2d34a;color:#fff;text-shadow:0 1px 0 #000;cursor:pointer}
 #grid{display:grid;grid-template-columns:repeat(8,1fr);gap:3px}
@@ -101,7 +101,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 @media (pointer:coarse){
   #sprint{display:block}
   .eqslot{width:40px;height:40px}
-  #eq{grid-template-columns:repeat(7,40px)}
+  #eq{grid-template-columns:repeat(6,40px)}
   #use{padding:15px 24px;font-size:16px}
   #chatbtn{padding:9px 12px}
   #gear{width:40px;height:36px}

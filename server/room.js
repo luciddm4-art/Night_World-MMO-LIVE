@@ -3,7 +3,7 @@
 // Room knows nothing about sockets: players have a send(obj) function, and the
 // clock/RNG are injectable, which keeps it fully unit-testable.
 import {
-  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN,
+  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN, REWARD_SLOTS, weaponOf, weaponIdOf,
 } from '../shared/data.js';
 import { createWorld } from '../shared/world.js';
 import { sweep } from '../shared/collision.js';
@@ -228,31 +228,53 @@ export class Room {
   onAttack(p, m) {
     if (p.mounted) return;
     const now = this.now();
-    const cd = CFG.PLAYER_BASE_ATK_MS * (1 - p.stats.haste);
+    const wp = weaponOf(p.inv.eq); // fists, sword, bow or fire staff: reach / damage / cooldown / aim all come from the weapon
+    const cd = wp.cd * (1 - p.stats.haste);
     if (now - p.lastAtk < cd - 80) return;
     p.lastAtk = now;
     p.a = (p.a + 1) % 1000000;
     if (isNum(m.r)) p.r = clamp(m.r, 10);
     const fx = Math.sin(p.r), fz = Math.cos(p.r);
-    const dmg = Math.round(CFG.PLAYER_BASE_DMG * p.stats.dmg);
+    const dmg = Math.round(wp.dmg * p.stats.dmg);
+    const reach = wp.reach + 0.6; // +0.6: lag tolerance
+    const inCone = [];
     for (const rb of this.rabbits.values()) {
       if (rb.dead) continue;
       const dx = rb.x - p.x, dz = rb.z - p.z;
       const d = Math.hypot(dx, dz);
-      if (d > 2.6 + 0.6) continue; // +0.6: lag tolerance
-      if ((dx * fx + dz * fz) / Math.max(d, 0.001) < 0.3) continue;
-      rb.hp -= dmg;
-      const killed = rb.hp <= 0;
-      this.broadcastNear(rb.x, rb.z, 60, { t: 'hit', i: rb.id, d: dmg, h: Math.max(0, rb.hp), k: killed ? 1 : 0, by: p.id });
-      rb.mode = 'chase';
-      rb.target = p.id;
-      rb.atkT = now + 400;
-      if (rb.hp <= 0) {
-        rb.hp = 0;
-        rb.dead = true;
-        rb.deadAt = now;
-        rb.target = null;
+      if (d > reach) continue;
+      if ((dx * fx + dz * fz) / Math.max(d, 0.001) < wp.cone) continue;
+      inCone.push({ rb, d });
+    }
+    if (!inCone.length) return;
+    let targets = inCone;
+    if (wp.hits === 'one') { // bow / staff: the nearest rabbit you are aiming at
+      inCone.sort((a, b) => a.d - b.d);
+      targets = [inCone[0]];
+    }
+    const struck = new Set();
+    for (const { rb } of targets) { struck.add(rb.id); this.damageRabbit(rb, dmg, p, now, wp.id, false); }
+    if (wp.splash > 0) { // fire: scorches rabbits standing near the one that was hit
+      const c = targets[0].rb, sd = Math.round(wp.splash * p.stats.dmg);
+      for (const rb of this.rabbits.values()) {
+        if (rb.dead || struck.has(rb.id)) continue;
+        if (dist(rb.x, rb.z, c.x, c.z) <= wp.splashR) this.damageRabbit(rb, sd, p, now, wp.id, true);
       }
+    }
+  }
+
+  damageRabbit(rb, amount, p, now, weapon, splash) {
+    rb.hp -= amount;
+    const killed = rb.hp <= 0;
+    this.broadcastNear(rb.x, rb.z, 60, { t: 'hit', i: rb.id, d: amount, h: Math.max(0, rb.hp), k: killed ? 1 : 0, by: p.id, w: weapon, sp: splash ? 1 : 0 });
+    rb.mode = 'chase';
+    rb.target = p.id;
+    rb.atkT = now + 400;
+    if (killed) {
+      rb.hp = 0;
+      rb.dead = true;
+      rb.deadAt = now;
+      rb.target = null;
     }
   }
 
@@ -260,10 +282,10 @@ export class Room {
   onCraft(p, m) {
     const r = RECIPES.find((x) => x.id === m.id);
     if (!r) return;
-    if (r.station) {
-      const st = STATIONS.find((s) => s.k === r.station);
-      if (dist(p.x, p.z, st.x, STATION_Z) > STATION_RANGE + STATION_SLACK) return this.fail(p, 'Move closer to the ' + st.name);
-    }
+    // Every recipe belongs to one station and can only be made while standing at it.
+    const st = STATIONS.find((s) => s.k === r.station);
+    if (!st) return this.fail(p, 'That needs a crafting station');
+    if (dist(p.x, p.z, st.x, STATION_Z) > STATION_RANGE + STATION_SLACK) return this.fail(p, 'Move closer to the ' + st.name);
     if (!Inv.canAfford(p.inv, r.cost)) return this.fail(p, 'Not enough materials');
     const work = Inv.cloneInv(p.inv);
     for (const k in r.cost) Inv.removeItems(work, k, r.cost[k]);
@@ -298,7 +320,7 @@ export class Room {
   }
 
   checkDonkeyReward(p) {
-    for (const s of ['head', 'chest', 'hands', 'foot', 'main', 'off']) if (!p.inv.eq[s]) return;
+    for (const s of REWARD_SLOTS) if (!p.inv.eq[s]) return;
     if (p.hasMount() || Inv.countItem(p.inv, 'donkey') > 0) return;
     if (Inv.addItem(p.inv, 'donkey', 1)) {
       this.gain(p, 'donkey', 1, 'reward');
@@ -483,7 +505,7 @@ export class Room {
         if (q === p) continue;
         if (Math.abs(q.x - p.x) > SNAP_PLAYER_R || Math.abs(q.z - p.z) > SNAP_PLAYER_R) continue;
         seen.add(q.id);
-        const e = { id: q.id, x: round2(q.x), z: round2(q.z), y: round2(q.y), r: round2(q.r), a: q.a, m: q.mounted ? 1 : 0 };
+        const e = { id: q.id, x: round2(q.x), z: round2(q.z), y: round2(q.y), r: round2(q.r), a: q.a, m: q.mounted ? 1 : 0, w: weaponIdOf(q.inv.eq) || 0 };
         if (!p.known.has(q.id)) { e.n = q.name; e.c = q.color; } // name/colour only on first sight
         pl.push(e);
       }

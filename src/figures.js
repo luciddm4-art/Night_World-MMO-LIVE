@@ -34,6 +34,56 @@ export function mkFig(col) {
   return g;
 }
 
+// ---- held weapons: small low-poly models parented to the right arm, so they swing with it
+const metal = () => new T.MeshLambertMaterial({ color: 0xcfd6e0 });
+const wood = () => new T.MeshLambertMaterial({ color: 0x6b4423 });
+const box = (w, h, d, m, x = 0, y = 0, z = 0) => { const o = new T.Mesh(new T.BoxGeometry(w, h, d), m); o.position.set(x, y, z); return o; };
+const HELD = {
+  sword() {
+    const g = new T.Group();
+    g.add(box(0.07, 0.95, 0.03, metal(), 0, 0.55, 0), box(0.34, 0.06, 0.08, new T.MeshLambertMaterial({ color: 0xc9a227 }), 0, 0.06, 0), box(0.06, 0.2, 0.06, wood(), 0, -0.06, 0));
+    g.rotation.x = Math.PI / 2; // blade points forward from the fist
+    return g;
+  },
+  bow() {
+    const g = new T.Group(), w = wood();
+    g.add(box(0.06, 0.22, 0.06, w, 0, 0, 0));
+    const up = box(0.05, 0.5, 0.05, w, 0, 0.33, -0.1); up.rotation.x = -0.45; g.add(up);
+    const dn = box(0.05, 0.5, 0.05, w, 0, -0.33, -0.1); dn.rotation.x = 0.45; g.add(dn);
+    g.add(box(0.012, 1.1, 0.012, new T.MeshBasicMaterial({ color: 0xeeeeee }), 0, 0, -0.3));
+    g.position.z = 0.1;
+    return g;
+  },
+  fire_staff() {
+    const g = new T.Group();
+    g.add(box(0.06, 1.5, 0.06, new T.MeshLambertMaterial({ color: 0x3a2a1a }), 0, 0.3, 0));
+    const orb = new T.Mesh(new T.SphereGeometry(0.15, 10, 8), new T.MeshBasicMaterial({ color: 0xff7a2a }));
+    orb.position.y = 1.12;
+    const glow = new T.Mesh(new T.SphereGeometry(0.24, 10, 8), new T.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.35, depthWrite: false }));
+    glow.position.y = 1.12;
+    g.add(orb, glow);
+    return g;
+  },
+};
+// wid: weapon id or 0/null for empty hands. Cheap no-op when unchanged.
+export function setHeld(g, wid) {
+  const u = g.userData;
+  wid = wid && HELD[wid] ? wid : 0;
+  if (u.heldId === wid) return;
+  if (u.held) {
+    u.armR.remove(u.held);
+    u.held.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    u.held = null;
+  }
+  u.heldId = wid;
+  if (!wid) return;
+  const h = new T.Group();
+  h.add(HELD[wid]());
+  h.position.set(0, -0.62, 0.12);
+  u.armR.add(h);
+  u.held = h;
+}
+
 const ANIM_SCALE = 0.4;
 export function animFig(g, dt, speed, now) {
   const u = g.userData;

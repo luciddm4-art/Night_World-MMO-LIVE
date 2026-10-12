@@ -1,4 +1,4 @@
-import { CFG, SPAWN } from '../shared/data.js';
+import { CFG, SPAWN, weaponIdOf } from '../shared/data.js';
 import { newInv, sanitizeInv, computeStats } from '../shared/inventory.js';
 
 const fin = (v, d = 0) => (Number.isFinite(v) ? v : d);
@@ -88,6 +88,7 @@ export class Player {
       hp: Math.round(this.hp),
       mh: this.maxHp,
       mt: this.mounted ? 1 : 0,
+      w: weaponIdOf(this.inv.eq) || 0, // held weapon, for the figure model
       dk: this.donkey ? { x: round2(this.donkey.x), z: round2(this.donkey.z) } : null,
     };
   }
