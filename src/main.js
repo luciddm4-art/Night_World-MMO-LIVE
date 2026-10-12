@@ -1,7 +1,7 @@
 // Wires everything together and runs the render loop.
 import { CFG, weaponIdOf } from '../shared/data.js';
 import { S } from './state.js';
-import { T, scene, cam, renderer, onResize } from './scene.js';
+import { T, scene, cam, renderer, onResize, sky } from './scene.js';
 import { animateCourtyard } from './courtyard.js';
 import { mkFig, animFig, upS, setHeld } from './figures.js';
 import { hgt, updateWorld, isFree, setNodeQty, resetNodes, updateNodeFx } from './terrain.js';
@@ -61,7 +61,7 @@ on('welcome', (m) => {
   P.x = y.x; P.z = y.z; P.r = y.r;
   S.inv = y.inv;
   Object.assign(S.st, y.st, { hp: y.hp, maxHp: y.mh });
-  applyMountState(y.mt, y.dk);
+  applyMountState(y.mt, y.dk, y.dh, y.dr);
   resetNodes(m.depleted);
   clearRabbits();
   clearPlayers();
@@ -78,7 +78,7 @@ on('welcome', (m) => {
 on('s', (m) => {
   S.st.hp = m.me.hp;
   S.st.maxHp = m.me.mh;
-  applyMountState(m.me.mt, m.me.dk);
+  applyMountState(m.me.mt, m.me.dk, m.me.dh, m.me.dr);
   if (S.online !== m.o) { S.online = m.o; updateHud(); }
   syncPlayers(m.p);
   syncRabbits(m.rb);
@@ -99,6 +99,12 @@ on('toast', (m) => say(m.m));
 on('fail', (m) => { say(m.m); sfx('error'); onFail(); });
 on('hit', onHit);
 on('hurt', (m) => {
+  if (m.m) { // the donkey took the bite: blue number, small shake, no red screen
+    sfx('hurt');
+    shake(0.15);
+    floatText(P.x, P.y + 2.6, P.z, '-' + m.d, 'mount');
+    return;
+  }
   sfx('hurt');
   hurtFlash(Math.min(1, m.d / 200));
   shake(0.35);
@@ -153,9 +159,8 @@ function loop() {
   let tvx = 0, tvz = 0, aim = P.r;
   if (l > 0.05 && !S.gather.active) {
     if (l > 1) { mx /= l; mz /= l; }
-    let sp = keys.ShiftLeft || keys.ShiftRight ? CFG.MAX_SPEED : 6;
-    if (joy) sp = 6 + 10 * Math.max(0, (Math.hypot(joy.dx, joy.dy) - 0.7) / 0.3);
-    if (input.sprint) sp = CFG.MAX_SPEED;
+    // one speed: walking (3/s). The donkey doubles it. There is no sprint.
+    let sp = CFG.WALK_SPEED;
     if (S.mounted) sp *= CFG.MOUNT_SPEED;
     tvx = mx * sp; tvz = mz * sp;
     aim = Math.atan2(mx, mz);
@@ -199,14 +204,13 @@ function loop() {
   upS(me, now);
   animFig(me, dt, S.mounted ? 0 : psp, now);
 
-  // footsteps and sprint dust
-  if (!S.mounted && psp > 1.5) {
+  // footsteps on foot, dust behind the donkey
+  if (!S.mounted && psp > 1.2) {
     stepD += psp * dt;
-    if (stepD > 4.2) { stepD = 0; sfx('step'); }
-    if (psp > 10) {
-      dustT -= dt;
-      if (dustT <= 0) { dustT = 0.07; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
-    }
+    if (stepD > 2.1) { stepD = 0; sfx('step'); }
+  } else if (S.mounted && psp > 3) {
+    dustT -= dt;
+    if (dustT <= 0) { dustT = 0.1; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
   }
 
   // camera follows with a little smoothing; snap if we were teleported
@@ -218,6 +222,7 @@ function loop() {
   cam.position.y = Math.max(cam.position.y, hgt(cam.position.x, cam.position.z) + 1);
   cam.lookAt(cf.x, cf.y + 1.6, cf.z);
   applyShake(cam, dt);
+  sky.position.set(cam.position.x, 0, cam.position.z);
   cam.updateMatrixWorld();
   animateCourtyard(t);
   updateNodeFx(now);

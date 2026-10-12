@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createGameServer } from '../server/index.js';
 import * as Inv from '../shared/inventory.js';
-import { STATIONS, STATION_Z } from '../shared/data.js';
+import { STATIONS, STATION_Z, PORTAL, SPAWN } from '../shared/data.js';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_PATH || 'playwright');
 const out = process.env.E2E_OUT || fs.mkdtempSync(path.join(os.tmpdir(), 'nwo-e2e-shots-'));
@@ -136,6 +136,22 @@ await A.screenshot({ path: out + '/bow.png' });
 await wait(300);
 ok(far.hp === 26, 'bow hit a rabbit 7 units away (24 dmg), hp=' + far.hp);
 ok(await B.evaluate(() => Object.values(window.__nwo.S.others)[0].g.userData.heldId === 'bow'), 'the other player sees the bow');
+
+// the Big Town, the donkey HUD and the far-away portal
+ok((await A.evaluate(() => !document.getElementById('sprint'))), 'no sprint button any more');
+const go = async (x, z, r) => { player.x = x; player.z = z; await A.evaluate((v) => { const P = window.__nwo.S.P; P.x = v.x; P.z = v.z; P.r = v.r; }, { x, z, r }); await wait(1200); };
+await go(SPAWN.x, SPAWN.z + 6, Math.PI); // on the plaza, looking north at the Hall
+await A.screenshot({ path: out + '/town-plaza.png' });
+await go(0, 80, 0); // outside the south gate, looking south along the road
+await A.screenshot({ path: out + '/town-south-gate.png' });
+player.inv.eq.mount = { id: 'donkey', n: 1 }; room.sendInv(player); await wait(500);
+ok(/Donkey 200 \/ 200/.test(await A.textContent('#mplabel')), 'donkey HP bar shows 200 / 200');
+await A.screenshot({ path: out + '/mount-hud.png' });
+await go(PORTAL.x, PORTAL.z - 2.55, 0);
+await A.screenshot({ path: out + '/portal.png' });
+ok(/Portal|Travel/i.test(await A.textContent('#use')), 'the portal works at its new place: ' + (await A.textContent('#use')));
+await go(home.x, home.z, 0);
+player.inv.eq.mount = null; room.sendInv(player); await wait(300);
 
 // settings
 await A.click('#gear');

@@ -14,38 +14,41 @@
   "./src/chat.js": "./src/chat.js?v=bd11b820",
   "./src/combat.js": "./src/combat.js?v=f7303ef6",
   "./src/config.js": "./src/config.js?v=f4a203e4",
-  "./src/courtyard.js": "./src/courtyard.js?v=eea526bc",
-  "./src/figures.js": "./src/figures.js?v=0eb22443",
+  "./src/courtyard.js": "./src/courtyard.js?v=b5eae813",
+  "./src/figures.js": "./src/figures.js?v=009fab7a",
   "./src/fx.js": "./src/fx.js?v=694afb83",
-  "./src/input.js": "./src/input.js?v=b2dba2e3",
+  "./src/input.js": "./src/input.js?v=43d1aaf0",
   "./src/interact.js": "./src/interact.js?v=16ced734",
   "./src/inventory.js": "./src/inventory.js?v=2b7e83a9",
-  "./src/main.js": "./src/main.js?v=02a0db21",
-  "./src/minimap.js": "./src/minimap.js?v=5172941b",
-  "./src/mount.js": "./src/mount.js?v=13474504",
+  "./src/main.js": "./src/main.js?v=5dc97466",
+  "./src/minimap.js": "./src/minimap.js?v=0214bc0b",
+  "./src/mount.js": "./src/mount.js?v=e29acfa6",
   "./src/net.js": "./src/net.js?v=d8cf29cc",
   "./src/panel.js": "./src/panel.js?v=43992ee7",
   "./src/players.js": "./src/players.js?v=907fcbd5",
   "./src/rabbits.js": "./src/rabbits.js?v=07be6f6d",
-  "./src/scene.js": "./src/scene.js?v=e7c2c833",
+  "./src/scene.js": "./src/scene.js?v=53974aaa",
   "./src/settings.js": "./src/settings.js?v=bfe2640a",
-  "./src/state.js": "./src/state.js?v=f4f8539e",
+  "./src/state.js": "./src/state.js?v=5cbb637e",
   "./src/terrain.js": "./src/terrain.js?v=9538d355",
+  "./src/town.js": "./src/town.js?v=862b4290",
   "./src/ui.js": "./src/ui.js?v=dcfa7515",
-  "./shared/collision.js": "./shared/collision.js?v=0f6d4d91",
-  "./shared/data.js": "./shared/data.js?v=64168c47",
+  "./shared/collision.js": "./shared/collision.js?v=58b805b6",
+  "./shared/data.js": "./shared/data.js?v=07ddd485",
   "./shared/inventory.js": "./shared/inventory.js?v=97115496",
-  "./shared/world.js": "./shared/world.js?v=7564d5f7"
+  "./shared/world.js": "./shared/world.js?v=402b4ef1"
  }
 }
 </script>
 <!-- importmap:end -->
-<link rel="stylesheet" href="css/style.css?v=be99536e">
+<link rel="stylesheet" href="css/style.css?v=c9d4a688">
 </head>
 <body>
 <div id="cap">Night World Online — World 1</div>
 <div id="hpwrap"><div id="hpfill"></div></div>
 <div id="hplabel">HP 1200 / 1200</div>
+<div id="mpwrap"><div id="mpfill"></div></div>
+<div id="mplabel"></div>
 <div id="hud"></div>
 <div id="who"></div>
 <div id="chatlog"></div>
@@ -60,7 +63,6 @@
 </div>
 <div id="stick"><div id="knob"></div></div>
 <button id="mount" type="button">Mount</button>
-<button id="sprint" type="button">Sprint</button>
 <button id="atk" type="button">Attack</button>
 <button id="use" type="button">Use</button>
 <div id="castlabel"></div>

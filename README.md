@@ -12,13 +12,17 @@ A small browser 3D MMO: gather wood, cotton and ore, hunt rabbits, craft gear at
 | Live (client) | https://luciddm4-art.github.io/Night_World-MMO-LIVE/ |
 | Live (server) | https://night-world-mmo-live.onrender.com (also serves the game itself) |
 
-**Controls** — move: stick / `WASD` · look: drag · sprint: `Shift` · attack: `Space` / Attack button · use/gather/craft: `E` / Use button · inventory: `I` · open the nearest crafting station: `C` · chat: `Enter` · `/logout` in chat forgets your saved login on this device.
+**Controls** — move: stick / `WASD` · look: drag · attack: `Space` / Attack button · use/gather/craft: `E` / Use button · inventory: `I` · open the nearest crafting station: `C` · chat: `Enter` · `/logout` in chat forgets your saved login on this device.
 
 **Connection** — a ping readout (green/yellow/red) sits next to the online count. A short drop shows a small “Reconnecting…” banner and the game keeps rendering; the client retries quickly with back-off, and a silent dead connection (common on phones after switching networks) is detected within ~9 s. Logged-in players come back where they were; guests start a fresh character.
 
-**Phone extras** — a **Sprint** toggle button (above Attack), bigger tap targets, and vibration on hits. **Desktop extras** — left-click the world (without dragging) to attack, hover inventory/equipment slots for stats and recipes. **⚙ Settings** (top right): brightness, sound, vibration, auto-face. They are saved on this device only (`localStorage.nwo_settings`).
+**Phone extras** — bigger tap targets, and vibration on hits. **Desktop extras** — left-click the world (without dragging) to attack, hover inventory/equipment slots for stats and recipes. **⚙ Settings** (top right): brightness, sound, vibration, auto-face. They are saved on this device only (`localStorage.nwo_settings`).
 
 **Game feel** — floating damage numbers, hit flash and knockback, rabbit HP bars and a `!` when one is chasing you, screen shake + red vignette when bitten, wood chips / ore sparks while gathering, trees that shake and fall, loot that flies into your inventory, and synthesised sound effects (Web Audio — no audio files). Audio starts after your first tap or key press, as browsers require.
+
+**The Big Town** — you spawn on the plaza of a walled 120x120 town: stone walls with a gate in the middle of each side, corner towers, a fountain, 12 houses and the Crafting Hall (with the four stations) in the middle. The town is a safe zone: no trees, resource nodes or rabbits inside the walls, and rabbits stop chasing you at the gates. The **portal is far away, due south at z = 2900** (the town's main gate faces north). There is no sprint: you walk at 3 units/s, and the donkey doubles that to 6, so the trip is about **8 minutes by donkey and 16 on foot**. The portal shows on the minimap (a blue diamond, pinned to the edge of the map while it is far away); there is no compass arrow. The portal sits in a flat clearing with four standing stones.
+
+**The donkey** — summoning it is a 5 second cast. While you ride, rabbit bites hit the **donkey (200 HP, 25 per bite)** instead of you. At 0 HP you fall off, the donkey is gone for 30 s and comes back at full health (then you need the 5 s summon again). It also heals from 0 to full in 30 s while it is fine. The HP bar sits under your own. Old characters saved inside a wall or house are moved to the plaza when they log in.
 
 **Crafting & weapons** — there is no portable crafting: you craft by standing at one of the four stations in the spawn hall (`E` or `C` opens it). Each station handles one material family, end to end (everything is Tier 1 for now):
 

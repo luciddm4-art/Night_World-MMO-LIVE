@@ -1,7 +1,8 @@
-// The spawn hall: walls, crafting stations, portal. Static scenery + collision.
+// The Crafting Hall (walls, stations) and the portal. The town around it is in town.js. Static scenery + collision.
 import { STATIONS, PORTAL } from '../shared/data.js';
 import { T, scene, tex, R } from './scene.js';
 import { mkFig } from './figures.js';
+import { animateTown } from './town.js';
 
 export const ST = STATIONS;
 export { PORTAL };
@@ -132,6 +133,7 @@ pbase.position.set(PORTAL.x, 0.17, PORTAL.z);
 scene.add(pbase);
 
 export function animateCourtyard(t) {
+  animateTown(t);
   torches.forEach((l2) => { l2.intensity = 1.2 + Math.sin(t * 9 + l2.userData.s) * 0.18 + Math.sin(t * 23 + l2.userData.s) * 0.1; });
   portalInner.rotation.z = t * 0.35;
   portalRunes.rotation.z = -t * 0.55;

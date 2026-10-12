@@ -1,6 +1,6 @@
 // Deterministic world generation. Server and client both call createWorld(seed)
 // and get the same terrain height, trees, resource nodes and rabbit spawn points.
-import { CFG } from './data.js';
+import { CFG, TOWN, PORTAL, PORTAL_SAFE, inSafeZone } from './data.js';
 
 const sstep = (a, b, x) => {
   x = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -25,7 +25,10 @@ export function createWorld(seed) {
   const hgt = (x, z) => {
     let e = vn(x * 0.008, z * 0.008) * 30 + vn(x * 0.02, z * 0.02) * 10 + vn(x * 0.06, z * 0.06) * 3 - 12;
     if (e < 0) e *= 0.2;
-    return e * sstep(22, 60, Math.hypot(x, z));
+    // flat ground under the town (square) and around the portal; hills blend in outside
+    const flat = sstep(TOWN.safe - 4, TOWN.safe + 40, Math.max(Math.abs(x), Math.abs(z)));
+    const flatP = sstep(PORTAL_SAFE - 20, PORTAL_SAFE + 20, Math.hypot(x - PORTAL.x, z - PORTAL.z));
+    return e * flat * flatP;
   };
 
   // flat [x, z, scale, x, z, scale, ...] per chunk
@@ -40,7 +43,7 @@ export function createWorld(seed) {
     for (let i = 0; i < n; i++) {
       const x = cx * CS + h2(cx * 7 + i, cz * 13 + 1) * CS;
       const z = cz * CS + h2(cx * 17 + 2, cz * 5 + i) * CS;
-      if (x * x + z * z < 484 || hgt(x, z) > 24) continue;
+      if (inSafeZone(x, z) || hgt(x, z) > 24) continue;
       a.push(x, z, 0.7 + h2(i + cx * 3, cz * 3 + i) * 0.9);
     }
     if (treeCache.size > 4000) treeCache.clear();
@@ -56,7 +59,7 @@ export function createWorld(seed) {
       for (let i = 0; i < n; i++) {
         const x = cx * CS + h2(cx * 11 + i * 3 + sd, cz * 13 + sd) * CS;
         const z = cz * CS + h2(cx * 17 + sd, cz * 5 + i * 3 + sd) * CS;
-        if (x * x + z * z < 600) continue;
+        if (inSafeZone(x, z)) continue;
         out.push({ id: type + ':' + cx + ':' + cz + ':' + i, type, x, z });
       }
     });
@@ -70,7 +73,7 @@ export function createWorld(seed) {
     for (let i = 0; i < n; i++) {
       const x = cx * CS + h2(cx * 23 + i * 5, cz * 19 + 7) * CS;
       const z = cz * CS + h2(cx * 13 + 7, cz * 29 + i * 5) * CS;
-      if (x * x + z * z < 700) continue;
+      if (inSafeZone(x, z)) continue;
       out.push({ id: 'rab:' + cx + ':' + cz + ':' + i, x, z });
     }
     return out;

@@ -1,6 +1,7 @@
 import { S } from './state.js';
 import { hgt } from './terrain.js';
 import { getDonkey } from './mount.js';
+import { PORTAL, TOWN } from '../shared/data.js';
 
 const mg = document.getElementById('mm').getContext('2d');
 const MS = 48, RNG = 100, CL = 96 / MS;
@@ -15,15 +16,23 @@ export function drawMap() {
     }
   }
   const mp = (wx, wz) => [48 + ((wx - P.x) / RNG) * 48, 48 + ((wz - P.z) / RNG) * 48];
-  const c = mp(0, 0);
-  mg.fillStyle = '#f2d34a';
-  if (c[0] > 5 && c[0] < 91 && c[1] > 5 && c[1] < 91) mg.fillRect(c[0] - 3, c[1] - 3, 6, 6);
-  else {
-    const ang = Math.atan2(c[1] - 48, c[0] - 48);
-    mg.beginPath();
-    mg.arc(48 + Math.cos(ang) * 43, 48 + Math.sin(ang) * 43, 3, 0, 6.283);
-    mg.fill();
-  }
+  // the town wall (a square) and, pinned to the map edge when it is far away, the portal
+  mg.strokeStyle = 'rgba(242,211,74,.75)';
+  mg.lineWidth = 1.5;
+  const a = mp(-TOWN.half, -TOWN.half), b = mp(TOWN.half, TOWN.half);
+  mg.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  const pp = mp(PORTAL.x, PORTAL.z);
+  let qx = pp[0], qy = pp[1];
+  const far = Math.hypot(qx - 48, qy - 48) > 40;
+  if (far) { const ang = Math.atan2(qy - 48, qx - 48); qx = 48 + Math.cos(ang) * 40; qy = 48 + Math.sin(ang) * 40; }
+  mg.fillStyle = '#6fc0ff';
+  mg.strokeStyle = '#fff';
+  mg.lineWidth = 1;
+  mg.beginPath();
+  mg.moveTo(qx, qy - 5); mg.lineTo(qx + 4, qy); mg.lineTo(qx, qy + 5); mg.lineTo(qx - 4, qy);
+  mg.closePath();
+  mg.fill();
+  mg.stroke();
   for (const id in S.rabbits) {
     const rb = S.rabbits[id];
     if (rb.dead) continue;

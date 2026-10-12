@@ -4,6 +4,7 @@ import { makeRoom, makePlayer, findThings, giveItems, fillBag } from './helpers.
 import { countItem } from '../shared/inventory.js';
 import { CFG, STATIONS, STATION_Z, RECIPES, FAMILIES, ITEMS, EQUIP_SLOTS, REWARD_SLOTS, WEAPONS, FISTS } from '../shared/data.js';
 import { sanitizeInv } from '../shared/inventory.js';
+import { PORTAL } from '../shared/data.js';
 import { isFree, courtFree } from '../shared/collision.js';
 
 const { tree, node, world } = findThings(7);
@@ -197,7 +198,7 @@ test('movement: legitimate sprinting is never corrected', () => {
   let x = run.x0;
   for (let i = 0; i < 100; i++) { // 7 seconds at full sprint, packets every 70 ms
     now.advance(70);
-    x += CFG.MAX_SPEED * 0.07;
+    x += CFG.WALK_SPEED * 0.07;
     room.handle(p, { t: 'p', x, z: run.z, r: 1 });
   }
   assert.equal(p.last('pos'), undefined);
@@ -213,7 +214,7 @@ test('movement: flooding position packets does not beat the speed limit', () => 
     room.handle(p, { t: 'p', x: (i + 1) * 3, z: 0, r: 0 });
   }
   const seconds = (now() - t0) / 1000;
-  const maxAllowed = CFG.MAX_SPEED * 1.15 * (seconds + 1.5);
+  const maxAllowed = CFG.WALK_SPEED * 1.15 * (seconds + 1.5);
   assert.ok(p.x <= maxAllowed + 1e-6, `travelled ${p.x.toFixed(1)}, cap ${maxAllowed.toFixed(1)}`);
 });
 
@@ -543,8 +544,8 @@ test('collision: client and server agree on the hall layout', () => {
   assert.equal(courtFree(0, 0), true);
   assert.equal(courtFree(0, -7), false);
   assert.equal(courtFree(12, 0), false);
-  assert.equal(courtFree(0, 8), false, 'the portal');
   assert.equal(courtFree(0, 12), true, 'the gap in the south wall');
+  assert.equal(courtFree(0, PORTAL.z), false, 'the portal');
 });
 
 
@@ -757,4 +758,137 @@ test('donkey reward: needs head, chest, foot, main and off hand (5 slots)', () =
   ['iron_helm', 'iron_chest', 'iron_boots', 'sword'].forEach((g) => giveItems(p, g, 1));
   ['iron_helm', 'iron_chest', 'iron_boots', 'sword'].forEach((g) => room.handle(p, { t: 'equip', i: p.inv.slots.findIndex((s) => s && s.id === g) }));
   assert.equal(countItem(p.inv, 'donkey'), 0, 'four slots is not enough');
+});
+
+
+// ---------------------------------------------------------------- walking speed and the donkey
+test('speed: walking is 3 units/s - running faster is corrected', () => {
+  const { room, now } = makeRoom();
+  const run = openRun();
+  const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
+  let x = run.x0;
+  for (let i = 0; i < 100; i++) { // 7 seconds at 7 units/s
+    now.advance(70);
+    x += 7 * 0.07;
+    room.handle(p, { t: 'p', x, z: run.z, r: 1 });
+  }
+  assert.ok(p.last('pos'), 'corrected');
+  assert.ok(p.x - run.x0 < 3 * 1.15 * 8.5 + 1, 'moved only ' + (p.x - run.x0).toFixed(1));
+});
+
+test('speed: riding the donkey doubles the limit (6 units/s) and is never corrected', () => {
+  const { room, now } = makeRoom();
+  const run = openRun();
+  const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
+  p.inv.eq.mount = { id: 'donkey', n: 1 };
+  p.mounted = true;
+  let x = run.x0;
+  for (let i = 0; i < 100; i++) {
+    now.advance(70);
+    x += 6 * 0.07;
+    room.handle(p, { t: 'p', x, z: run.z, r: 1 });
+  }
+  assert.equal(p.last('pos'), undefined);
+  assert.ok(Math.abs(p.x - x) < 1e-9);
+});
+
+// ---------------------------------------------------------------- donkey HP
+const withDonkey = (p) => { p.inv.eq.mount = { id: 'donkey', n: 1 }; p.mounted = true; };
+function bite(room, now, p) {
+  const rb = [...room.rabbits.values()].find((r) => !r.dead) || spawnRabbitNear(room, p);
+  rb.x = p.x; rb.z = p.z + 1; rb.mode = 'chase'; rb.target = p.id; rb.atkT = 0;
+  now.advance(1600);
+  room.tick();
+}
+
+test('donkey: rabbit bites hit the donkey, not the rider (25 of 200 HP each)', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  withDonkey(p);
+  const hp = p.hp;
+  spawnRabbitNear(room, p);
+  bite(room, now, p);
+  assert.ok(p.mountHp >= 174 && p.mountHp <= 190, 'one bite taken, a little regen: ' + p.mountHp);
+  assert.equal(p.hp, hp, 'rider unhurt');
+  const h = p.last('hurt');
+  assert.equal(h.m, 1);
+  assert.equal(h.d, 25);
+  assert.ok(p.mounted);
+  assert.equal(p.view(room.now()).dh, Math.round(p.mountHp));
+});
+
+test('donkey at 0 HP: rider falls off, the donkey is gone for 30 s, then needs a 5 s summon', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  withDonkey(p);
+  p.mountHp = 20;
+  spawnRabbitNear(room, p);
+  bite(room, now, p);
+  assert.equal(p.mounted, false, 'dismounted');
+  assert.equal(p.donkey, null);
+  assert.equal(p.mountHp, 0);
+  assert.ok(p.all('toast').some((t) => /exhausted/.test(t.m)));
+  assert.ok(p.view(room.now()).dr > 28000, 'client is told how long to wait');
+  // cannot remount during the 30 s
+  p.out.length = 0;
+  now.advance(20000);
+  room.handle(p, { t: 'mount' });
+  assert.match(p.last('fail').m, /recovering/);
+  assert.equal(p.mounted, false);
+  // after 30 s: the donkey is back at full health, but mounting is a 5 s cast
+  now.advance(11000);
+  room.tick();
+  assert.equal(p.mountHp, CFG.MOUNT_HP);
+  p.out.length = 0;
+  room.handle(p, { t: 'mount' });
+  const cast = p.last('cast');
+  assert.deepEqual([cast.kind, cast.dur], ['mount', 5000]);
+  assert.equal(p.mounted, false, 'not mounted yet');
+  now.advance(2000);
+  room.handle(p, { t: 'gdone' }); // finishing early is refused (and cancels the cast)
+  assert.equal(p.mounted, false, 'too early');
+  assert.match(p.last('fail').m, /early/);
+  room.handle(p, { t: 'mount' });
+  now.advance(5200);
+  room.handle(p, { t: 'gdone' });
+  assert.equal(p.mounted, true);
+});
+
+test('donkey: heals from 0 to full in 30 s, and an unmounted rider is bitten as usual', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  withDonkey(p);
+  p.mountHp = 50;
+  now.advance(250); room.tick(); // 'tick' regen uses dt (max 0.25 s per tick): run 15 s of ticks
+  for (let i = 0; i < 70; i++) { now.advance(250); room.tick(); }
+  assert.ok(p.mountHp > 50 + 200 * 15 / 30 - 5 && p.mountHp <= 200, 'about 150 after ~18 s: ' + p.mountHp);
+  p.mounted = false;
+  const hp = p.hp;
+  spawnRabbitNear(room, p);
+  bite(room, now, p);
+  assert.ok(p.hp < hp, 'on foot the rider takes the bite');
+  assert.equal(p.last('hurt').m, undefined);
+});
+
+test('donkey: a bite interrupts the summon cast', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  p.inv.eq.mount = { id: 'donkey', n: 1 };
+  room.handle(p, { t: 'mount' });
+  assert.ok(p.gather && p.gather.kind === 'mount');
+  spawnRabbitNear(room, p);
+  bite(room, now, p);
+  assert.equal(p.gather, null);
+});
+
+// ---------------------------------------------------------------- safe zone
+test('safe zone: rabbits do not follow you into the town', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 0, z: 90 });
+  const rb = spawnRabbitNear(room, { x: 0, z: 88 }); // just outside the south wall
+  rb.mode = 'chase'; rb.target = p.id;
+  p.z = 40; // you ran inside
+  for (let i = 0; i < 20; i++) { now.advance(250); room.tick(); }
+  assert.ok(Math.abs(rb.z) >= 66, 'rabbit stayed outside, z=' + rb.z);
+  assert.notEqual(rb.mode, 'chase');
 });
