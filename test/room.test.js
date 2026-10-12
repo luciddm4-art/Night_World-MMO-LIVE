@@ -762,21 +762,21 @@ test('donkey reward: needs head, chest, foot, main and off hand (5 slots)', () =
 
 
 // ---------------------------------------------------------------- walking speed and the donkey
-test('speed: walking is 4.5 units/s - running faster is corrected', () => {
+test('speed: walking is 6 units/s - running faster is corrected', () => {
   const { room, now } = makeRoom();
   const run = openRun();
   const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
   let x = run.x0;
-  for (let i = 0; i < 100; i++) { // 7 seconds at 9 units/s
+  for (let i = 0; i < 100; i++) { // 7 seconds at 12 units/s
     now.advance(70);
-    x += 9 * 0.07;
+    x += 12 * 0.07;
     room.handle(p, { t: 'p', x, z: run.z, r: 1 });
   }
   assert.ok(p.last('pos'), 'corrected');
-  assert.ok(p.x - run.x0 < 4.5 * 1.15 * 8.5 + 1, 'moved only ' + (p.x - run.x0).toFixed(1));
+  assert.ok(p.x - run.x0 < 6 * 1.15 * 8.5 + 1, 'moved only ' + (p.x - run.x0).toFixed(1));
 });
 
-test('speed: riding the donkey is 6 units/s and is never corrected', () => {
+test('speed: riding the donkey is 10 units/s and is never corrected', () => {
   const { room, now } = makeRoom();
   const run = openRun();
   const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
@@ -785,7 +785,7 @@ test('speed: riding the donkey is 6 units/s and is never corrected', () => {
   let x = run.x0;
   for (let i = 0; i < 100; i++) {
     now.advance(70);
-    x += 6 * 0.07;
+    x += CFG.RIDE_SPEED * 0.07;
     room.handle(p, { t: 'p', x, z: run.z, r: 1 });
   }
   assert.equal(p.last('pos'), undefined);
