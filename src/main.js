@@ -159,9 +159,8 @@ function loop() {
   let tvx = 0, tvz = 0, aim = P.r;
   if (l > 0.05 && !S.gather.active) {
     if (l > 1) { mx /= l; mz /= l; }
-    // one speed: walking (3/s). The donkey doubles it. There is no sprint.
-    let sp = CFG.WALK_SPEED;
-    if (S.mounted) sp *= CFG.MOUNT_SPEED;
+    // two speeds: walking (4.5/s) and the donkey (6/s). There is no sprint.
+    const sp = S.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED;
     tvx = mx * sp; tvz = mz * sp;
     aim = Math.atan2(mx, mz);
   }
@@ -207,7 +206,7 @@ function loop() {
   // footsteps on foot, dust behind the donkey
   if (!S.mounted && psp > 1.2) {
     stepD += psp * dt;
-    if (stepD > 2.1) { stepD = 0; sfx('step'); }
+    if (stepD > 3.2) { stepD = 0; sfx('step'); }
   } else if (S.mounted && psp > 3) {
     dustT -= dt;
     if (dustT <= 0) { dustT = 0.1; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }

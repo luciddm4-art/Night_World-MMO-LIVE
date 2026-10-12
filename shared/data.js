@@ -17,8 +17,8 @@ export const CFG = {
   PLAYER_BASE_HP: 1200,
   PLAYER_BASE_DMG: 30,
   PLAYER_BASE_ATK_MS: 400,
-  WALK_SPEED: 3, // units / second. There is no sprint.
-  MOUNT_SPEED: 2, // the donkey doubles your speed (x2 = 6 units / second)
+  WALK_SPEED: 4.5, // units / second on foot. There is no sprint.
+  RIDE_SPEED: 6, // units / second on the donkey
   MOUNT_CAST_MS: 5000, // summoning the donkey takes a 5 second cast
   MOUNT_HP: 200, // rabbit bites hit the donkey instead of you while you ride
   MOUNT_RECALL_MS: 30000, // after the donkey drops to 0 HP it is gone this long
