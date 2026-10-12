@@ -2,11 +2,14 @@
 // with back-off, and a tiny message bus.  Game logic lives elsewhere.
 import { endpoints } from './config.js';
 import { S } from './state.js';
-import { showBoot, hideBoot } from './ui.js';
+import { showBoot, hideBoot, showBanner, hideBanner, setPing } from './ui.js';
 
 const handlers = {};
 let ws = null;
 let stopped = false;
+let hasPlayed = false; // we were in the world at least once: a drop is a "reconnect", not a first load
+let lastRx = 0;
+let rtt = null;
 
 export function on(type, fn) {
   (handlers[type] || (handlers[type] = [])).push(fn);
@@ -33,16 +36,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function warmUp(http, attempt) {
   const t0 = Date.now();
   let done = false;
+  const soft = attempt > 0 && hasPlayed; // short drop while playing: small banner, game stays visible
   const tick = setInterval(() => {
     const s = Math.round((Date.now() - t0) / 1000);
-    if (s >= 3) {
+    if (soft && s < 8) return;
+    if (s >= 3 || soft) {
       showBoot(
         attempt ? 'Reconnecting…' : 'Waking the server…',
         'The free host sleeps when nobody is playing. This can take up to a minute — ' + s + 's',
       );
+      hideBanner();
     }
   }, 500);
-  showBoot(attempt ? 'Reconnecting…' : 'Connecting…');
+  if (soft) showBanner('Reconnecting…');
+  else showBoot(attempt ? 'Reconnecting…' : 'Connecting…');
   try {
     while (!done && !stopped) {
       const ctl = new AbortController();
@@ -67,13 +74,21 @@ function openSocket(url) {
     let opened = false;
     try { ws = new WebSocket(url); } catch { resolve(false); return; }
     const guard = setTimeout(() => { try { ws.close(); } catch { /* ignore */ } }, 30000);
-    ws.onopen = () => { opened = true; clearTimeout(guard); hideBoot(); emit('open'); };
+    ws.onopen = () => { opened = true; lastRx = Date.now(); clearTimeout(guard); hideBoot(); hideBanner(); emit('open'); };
     ws.onmessage = (e) => {
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
+      lastRx = Date.now();
+      if (m && m.t === 'pong') {
+        const d = Math.max(0, Math.round(lastRx - m.n));
+        rtt = rtt == null ? d : Math.round(rtt * 0.7 + d * 0.3);
+        setPing(rtt);
+        return;
+      }
+      if (m && m.t === 'welcome') hasPlayed = true;
       if (m && m.t) emit(m.t, m);
     };
-    ws.onclose = () => { clearTimeout(guard); S.ready = false; emit('close'); resolve(opened); };
+    ws.onclose = () => { clearTimeout(guard); S.ready = false; rtt = null; setPing(null); emit('close'); resolve(opened); };
     ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
   });
 }
@@ -87,7 +102,24 @@ export async function connect() {
     const wasOpen = await openSocket(url);
     if (stopped) break;
     attempt = wasOpen ? 1 : attempt + 1;
-    showBoot('Connection lost — retrying…');
-    await sleep(Math.min(8000, 800 * attempt));
+    if (hasPlayed && attempt < 4) showBanner('Connection lost — reconnecting…');
+    else showBoot('Connection lost — retrying…');
+    // quick first retries, then back off (with jitter so a restarted server isn't stampeded)
+    const wait = Math.min(6000, 300 * 2 ** Math.min(attempt, 5)) * (0.75 + Math.random() * 0.5);
+    await sleep(wait);
   }
 }
+
+// ---- latency probe + dead-connection watchdog ----
+// Phones often leave a socket "open" after wifi/4G changes. If nothing arrives for a while, drop it
+// and let the reconnect loop above take over instead of freezing the game.
+function probe() {
+  if (!ws || ws.readyState !== 1) return;
+  if (Date.now() - lastRx > 9000) { try { ws.close(); } catch { /* ignore */ } return; }
+  send({ t: 'ping', n: Date.now() });
+}
+setInterval(probe, 2000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !ws || ws.readyState !== 1) return;
+  if (Date.now() - lastRx > 4000) { try { ws.close(); } catch { /* ignore */ } } else probe();
+});

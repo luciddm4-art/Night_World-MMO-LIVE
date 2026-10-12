@@ -14,6 +14,8 @@ A small browser 3D MMO: gather wood, cotton and ore, hunt rabbits, craft gear at
 
 **Controls** — move: stick / `WASD` · look: drag · sprint: `Shift` · attack: `Space` / Attack button · use/gather/craft: `E` / Use button · inventory: `I` · portable crafting: `C` · chat: `Enter` · `/logout` in chat forgets your saved login on this device.
 
+**Connection** — a ping readout (green/yellow/red) sits next to the online count. A short drop shows a small “Reconnecting…” banner and the game keeps rendering; the client retries quickly with back-off, and a silent dead connection (common on phones after switching networks) is detected within ~9 s. Logged-in players come back where they were; guests start a fresh character.
+
 **Phone extras** — a **Sprint** toggle button (above Attack), bigger tap targets, and vibration on hits. **Desktop extras** — left-click the world (without dragging) to attack, hover inventory/equipment slots for stats and recipes. **⚙ Settings** (top right): brightness, sound, vibration, auto-face. They are saved on this device only (`localStorage.nwo_settings`).
 
 **Game feel** — floating damage numbers, hit flash and knockback, rabbit HP bars and a `!` when one is chasing you, screen shake + red vignette when bitten, wood chips / ore sparks while gathering, trees that shake and fall, loot that flies into your inventory, and synthesised sound effects (Web Audio — no audio files). Audio starts after your first tap or key press, as browsers require.
@@ -26,6 +28,7 @@ A small browser 3D MMO: gather wood, cotton and ore, hunt rabbits, craft gear at
 npm install
 npm start            # http://localhost:8080  — serves the game and the server
 npm test             # unit + integration tests
+npm run stamp        # after editing src/ or shared/ or css/: refresh script versions in index.html (see Cache-busting)
 ```
 
 Environment variables:
@@ -33,7 +36,8 @@ Environment variables:
 | Var | Default | Meaning |
 |---|---|---|
 | `PORT` | `8080` | HTTP/WebSocket port |
-| `DATA_DIR` | `./data` | where `accounts.json` is written (**gitignored**) |
+| `DATABASE_URL` | *(unset)* | Postgres connection string. **Set this in production**: accounts and saves then survive redeploys. Unset = JSON file (local play only). |
+| `DATA_DIR` | `./data` | where `accounts.json` is written when there is no database (**gitignored**); also the fallback if the database is unreachable |
 | `ALLOWED_ORIGINS` | GitHub Pages site | extra comma-separated origins allowed to open a WebSocket (`*` = any). Same-origin and `localhost` are always allowed. |
 
 ## How it works
@@ -63,8 +67,8 @@ The world itself (terrain, tree/ore/cotton/rabbit positions) is generated from t
 
 ### Protocol (JSON over WebSocket)
 
-Client → server: `auth{mode: guest|register|login|token}`, `p{x,z,r}`, `atk{r}`, `gather{kind,id}`, `gdone`, `gcancel`, `craft{id}`, `equip{i}`, `unequip{slot}`, `mount`, `dismount`, `chat{m}`.
-Server → client: `welcome`, `auth_err`, `s` (10 Hz snapshot: you, nearby players, nearby rabbits), `inv`, `node`, `cast`, `fail`, `toast`, `pos` (correction), `chat`, `kick`, plus three feedback events: `hit {i,d,h,k,by}` (a rabbit was hit; sent to players within 60 units), `hurt {d,by}` (you were bitten) and `gain {item,n,src}` (you received an item; `src` is `gather`, `loot`, `craft` or `reward`). Rabbit entries in `s` carry `a:1` while chasing or attacking. These only drive visuals and sound; the server remains the only authority on damage and items.
+Client → server: `auth{mode: guest|register|login|token}`, `p{x,z,r}`, `atk{r}`, `gather{kind,id}`, `gdone`, `gcancel`, `craft{id}`, `equip{i}`, `unequip{slot}`, `mount`, `dismount`, `chat{m}`, `ping{n}`.
+Server → client: `welcome`, `auth_err`, `s` (10 Hz snapshot: you, nearby players, nearby rabbits), `inv`, `node`, `cast`, `fail`, `toast`, `pos` (correction), `chat`, `kick`, plus three feedback events: `hit {i,d,h,k,by}` (a rabbit was hit; sent to players within 60 units), `pong {n}` (reply to the client's `ping {n}` latency probe), `hurt {d,by}` (you were bitten) and `gain {item,n,src}` (you received an item; `src` is `gather`, `loot`, `craft` or `reward`). Rabbit entries in `s` carry `a:1` while chasing or attacking. These only drive visuals and sound; the server remains the only authority on damage and items.
 
 ### Security model
 
@@ -72,17 +76,31 @@ Server → client: `welcome`, `auth_err`, `s` (10 Hz snapshot: you, nearby playe
 - Rate limits: per-connection message bucket, failed-login throttle per IP, registrations per IP, chat flood limit, 4 KB max frame, max 40 players/world, max 16 worlds.
 - WebSocket `Origin` allow-list; static server only exposes `index.html`, `css/ src/ shared/ vendor/`.
 - Chat is plain text, control/bidi characters stripped, rendered with `textContent`.
-- **Not covered:** the client still moves itself, so a modified client can e.g. walk through trees (not faster than allowed, not through the server's rules). Add server-side collision if that matters.
+- **Collision:** the client moves itself, but the server walks every position packet along its path and stops it at the spawn hall's walls and at standing trees (`shared/collision.js`, with a small tolerance so lag never rubber-bands honest players). A player trapped inside something (a tree regrew on them) is never frozen.
 
 ## Deploying
 
-**Server (Render, free tier):** build `npm install`, start `npm start`. The service also serves the game, so `https://<service>.onrender.com/` works on its own.
+**Server (Render, free tier):** easiest is the included `render.yaml` Blueprint (Render dashboard → New → Blueprint → this repo): it sets build `npm ci --omit=dev`, start `npm start`, health check `/health`, Node 20, and asks you for `DATABASE_URL`. Or create a Web Service by hand with the same settings. Keep the service name `night-world-mmo-live`, because `src/config.js` and the keep-alive workflow use that URL. The service also serves the game, so `https://<service>.onrender.com/` works on its own.
 
 **Client (GitHub Pages):** serve the repo root. The client talks to the hosted Render server when opened from `*.github.io` (see `src/config.js`).
 
-### ⚠️ Persistence on free hosting
+### Persistence (Postgres)
 
-Accounts and characters are saved to `DATA_DIR/accounts.json`. Render's free tier has an **ephemeral disk**: the file is lost on every redeploy and whenever the instance is replaced. To keep accounts, attach a persistent disk (paid) and set `DATA_DIR` to its mount path, or replace `server/store.js` with a database-backed class (it has a small surface: `get/create/issueToken/byToken/saveCharacter/flush`).
+Render's free disk is **ephemeral**: it is wiped on every redeploy and restart. So production should use a database:
+
+1. Create a free Postgres at [neon.tech](https://neon.tech) (the free tier does not expire) and copy its connection string.
+2. In Render → your service → **Environment**, add `DATABASE_URL` = that string, save (Render redeploys).
+3. Open `https://<service>.onrender.com/health`. It should say `"storage":"postgres","storageOk":true`.
+
+Never commit the connection string or paste it in chat or issues; it lives only in Render's environment settings.
+
+How it works: the server keeps accounts in memory and writes changes through `server/store.js` to two tables (`nwo_accounts`, `nwo_tokens`, created automatically on first start). Writes are batched, unchanged characters are not rewritten (so the database can sleep while nobody plays), failed writes are retried, and a final flush runs on shutdown (SIGTERM). If the database cannot be reached at start-up the server logs it loudly, falls back to the file store and reports `"storage":"file","storageOk":false` on `/health`, so the game stays playable.
+
+Without `DATABASE_URL` the JSON file in `DATA_DIR` is used. Accounts created on the file store are not migrated to the database.
+
+### Cache-busting
+
+GitHub Pages lets browsers keep files for ~10 minutes, so after a deploy some players could run old scripts. `npm run stamp` writes an **import map** into `index.html` that gives each script a version taken from its contents (`./src/fx.js` → `./src/fx.js?v=1a2b3c4d`); unchanged files stay cached, changed files are fetched fresh. Run it after editing anything in `src/`, `shared/` or `css/` and commit `index.html`: a test (`test/stamp.test.js`) fails in CI if you forget. Browsers without import-map support still work, they just skip the versioning.
 
 ### Cold starts
 
@@ -93,8 +111,10 @@ Render's free tier sleeps after ~15 minutes without traffic and takes ~30–60 s
 
 ## Tests
 
-`npm test` runs ~50 tests: inventory rules, deterministic world generation, every server game rule with a fake clock (gather, craft, equip, combat, rabbits, mounts, chat, speed limit), and real-WebSocket integration tests (register/login/token, throttling, persistence across restart, origin check, malformed input, static-file safety).
+`npm test` runs ~75 tests: inventory rules, deterministic world generation, every server game rule with a fake clock (gather, craft, equip, combat, rabbits, mounts, chat, speed limit), and real-WebSocket integration tests (register/login/token, throttling, persistence across restart on both the file store and Postgres, origin check, malformed input, static-file safety). Postgres is tested with [PGlite](https://pglite.dev) (real Postgres in WebAssembly), so no database is needed to run the tests. Server-side collision, the ping probe and the `index.html` version stamp are covered too.
+
+`e2e/e2e.mjs` is a browser test (real Chromium via Playwright, not part of `npm test`): login, gathering, combat feedback, settings, versioned modules, the ping readout and a forced disconnect + reconnect.
 
 ## Roadmap ideas
 
-Server-side collision · persistent database · player-vs-player and parties · more resources/recipes · sound · upgrading Three.js past r128 (needs a lighting/colour pass).
+Player-vs-player and parties · more resources/recipes · upgrading Three.js past r128 (needs a lighting/colour pass).

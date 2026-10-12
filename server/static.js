@@ -48,7 +48,7 @@ export function createStaticHandler(root) {
     const headers = {
       'content-type': MIME[ext] || 'application/octet-stream',
       'x-content-type-options': 'nosniff',
-      'cache-control': ext === '.html' ? 'no-cache' : 'public, max-age=300',
+      'cache-control': ext === '.html' ? 'no-cache' : new URL(req.url, 'http://x').searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
       vary: 'Accept-Encoding',
     };
     const wantsGzip = COMPRESSIBLE.has(ext) && /\bgzip\b/.test(req.headers['accept-encoding'] || '');

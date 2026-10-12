@@ -6,7 +6,7 @@ import { createWorld } from '../shared/world.js';
 import { SEED } from './config.js';
 import { S, nodeQty } from './state.js';
 import { T, scene, tex } from './scene.js';
-import { courtFree } from './courtyard.js';
+import { isFree as sharedFree } from '../shared/collision.js';
 
 const { CS, SEG, VR } = CFG;
 export const world = createWorld(SEED);
@@ -183,17 +183,5 @@ export function updateWorld() {
 
 // Can the player stand here? (hall walls, stations, portal, standing trees)
 export function isFree(x, z) {
-  if (!courtFree(x, z)) return false;
-  const cx = Math.floor(x / CS), cz = Math.floor(z / CS);
-  for (let ii = -1; ii <= 1; ii++) {
-    for (let jj = -1; jj <= 1; jj++) {
-      const X = cx + ii, Z = cz + jj, t = world.ctrees(X, Z);
-      for (let q = 0; q < t.length; q += 3) {
-        if (!treeReady(X + ',' + Z + ',' + q / 3)) continue;
-        const dx = x - t[q], dz = z - t[q + 1];
-        if (dx * dx + dz * dz < 0.8 * t[q + 2] * t[q + 2] + 0.3) return false;
-      }
-    }
-  }
-  return true;
+  return sharedFree(world, treeReady, x, z, 0);
 }
