@@ -405,3 +405,52 @@ test('snapshots: names are sent once, nearby players only', () => {
   assert.equal(s.me.mh, 1200);
   assert.equal(s.o, 3);
 });
+
+// ------------------------------------------------------------------ feedback events (game feel)
+test('events: hits are announced with real damage, to everyone nearby', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  const bystander = makePlayer(room, 'near', { x: 105, z: 100 });
+  const far = makePlayer(room, 'far', { x: 900, z: 900 });
+  const rb = spawnRabbitNear(room, p);
+  room.handle(p, { t: 'atk', r: 0 });
+  const h = p.last('hit');
+  assert.deepEqual([h.i, h.d, h.h, h.k], [rb.id, 30, 20, 0]);
+  assert.ok(bystander.last('hit'), 'a nearby player sees it too');
+  assert.equal(far.last('hit'), undefined);
+  now.advance(450);
+  room.handle(p, { t: 'atk', r: 0 });
+  const k = p.last('hit');
+  assert.deepEqual([k.d, k.h, k.k], [30, 0, 1]);
+});
+
+test('events: a rejected attack (cooldown / miss) produces no hit event', () => {
+  const { room } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  spawnRabbitNear(room, p);
+  room.handle(p, { t: 'atk', r: 0 });
+  p.out.length = 0;
+  room.handle(p, { t: 'atk', r: 0 }); // too soon
+  room.handle(p, { t: 'atk', r: Math.PI });
+  assert.equal(p.all('hit').length, 0);
+});
+
+test('events: bites tell the victim how much it hurt; gathers, loot and crafts report gains', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 100, z: 100 });
+  const rb = spawnRabbitNear(room, p);
+  rb.mode = 'chase'; rb.target = p.id;
+  room.tick();
+  assert.deepEqual([p.last('hurt').d, p.last('hurt').by], [25, rb.id]);
+  assert.equal(p.last('s').rb.find((r) => r.i === rb.id).a, 1, 'aggro flag in snapshot');
+
+  const { tree } = findThings(7);
+  const q = makePlayer(room, 'b', { x: tree.x, z: tree.z });
+  room.handle(q, { t: 'gather', kind: 'tree', id: tree.id });
+  now.advance(2100);
+  room.handle(q, { t: 'gdone' });
+  assert.deepEqual(q.last('gain'), { t: 'gain', item: 'wood', n: 1, src: 'gather' });
+  giveItems(q, 'iron', 3);
+  room.handle(q, { t: 'craft', id: 'c_ihelm' });
+  assert.deepEqual(q.last('gain'), { t: 'gain', item: 'iron_helm', n: 1, src: 'craft' });
+});

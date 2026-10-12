@@ -78,7 +78,12 @@ export class Room {
   broadcast(obj) {
     for (const p of this.players.values()) p.send(obj);
   }
+  // send to everyone within r units of a point (hit events: you see other players' fights too)
+  broadcastNear(x, z, r, obj) {
+    for (const q of this.players.values()) if (Math.abs(q.x - x) <= r && Math.abs(q.z - z) <= r) q.send(obj);
+  }
   toast(p, m) { p.send({ t: 'toast', m }); }
+  gain(p, item, n, src) { p.send({ t: 'gain', item, n, src }); }
   fail(p, m) { p.send({ t: 'fail', m }); }
   sendInv(p) {
     p.dirty = true;
@@ -191,6 +196,7 @@ export class Room {
     if (!Inv.addItem(p.inv, tgt.item, tgt.n)) return this.fail(p, 'Inventory full');
 
     const name = ITEMS[tgt.item].n;
+    this.gain(p, tgt.item, tgt.n, g.kind === 'corpse' ? 'loot' : 'gather');
     if (g.kind === 'corpse') {
       this.rabbits.delete(g.id);
       this.deadUntil.set(g.id, now + CFG.RABBIT_RESPAWN_MS);
@@ -224,6 +230,8 @@ export class Room {
       if (d > 2.6 + 0.6) continue; // +0.6: lag tolerance
       if ((dx * fx + dz * fz) / Math.max(d, 0.001) < 0.3) continue;
       rb.hp -= dmg;
+      const killed = rb.hp <= 0;
+      this.broadcastNear(rb.x, rb.z, 60, { t: 'hit', i: rb.id, d: dmg, h: Math.max(0, rb.hp), k: killed ? 1 : 0, by: p.id });
       rb.mode = 'chase';
       rb.target = p.id;
       rb.atkT = now + 400;
@@ -249,6 +257,7 @@ export class Room {
     for (const k in r.cost) Inv.removeItems(work, k, r.cost[k]);
     if (!Inv.addItem(work, r.out, r.n)) return this.fail(p, 'Inventory full');
     p.inv = work;
+    this.gain(p, r.out, r.n, 'craft');
     this.toast(p, 'Crafted ' + r.name);
     this.sendInv(p);
   }
@@ -279,7 +288,10 @@ export class Room {
   checkDonkeyReward(p) {
     for (const s of ['head', 'chest', 'hands', 'foot', 'main', 'off']) if (!p.inv.eq[s]) return;
     if (p.hasMount() || Inv.countItem(p.inv, 'donkey') > 0) return;
-    if (Inv.addItem(p.inv, 'donkey', 1)) this.toast(p, 'Reward: Donkey received!');
+    if (Inv.addItem(p.inv, 'donkey', 1)) {
+      this.gain(p, 'donkey', 1, 'reward');
+      this.toast(p, 'Reward: Donkey received!');
+    }
   }
 
   // ------------------------------------------------------------ mount
@@ -393,7 +405,7 @@ export class Room {
         rb.mode = 'attack';
         if (now - rb.atkT > CFG.RABBIT_ATK_MS) {
           rb.atkT = now;
-          if (!t.mounted) this.damagePlayer(t, CFG.RABBIT_DMG * (1 - t.stats.def), now);
+          if (!t.mounted) this.damagePlayer(t, CFG.RABBIT_DMG * (1 - t.stats.def), now, rb.id);
         }
       } else {
         rb.mode = 'chase';
@@ -404,9 +416,10 @@ export class Room {
     }
   }
 
-  damagePlayer(p, amount, now) {
+  damagePlayer(p, amount, now, by = null) {
     p.hp -= amount;
     p.lastDamageT = now;
+    p.send({ t: 'hurt', d: Math.round(amount), by });
     if (p.hp <= 0) {
       p.hp = p.maxHp;
       this.toast(p, 'You were knocked out. Waking up...');
@@ -466,7 +479,7 @@ export class Room {
       const rb = [];
       for (const r of this.rabbits.values()) {
         if (Math.abs(r.x - p.x) > SNAP_RABBIT_R || Math.abs(r.z - p.z) > SNAP_RABBIT_R) continue;
-        rb.push({ i: r.id, x: round2(r.x), z: round2(r.z), d: r.dead ? 1 : 0, h: r.hp });
+        rb.push({ i: r.id, x: round2(r.x), z: round2(r.z), d: r.dead ? 1 : 0, h: r.hp, a: r.mode === 'chase' || r.mode === 'attack' ? 1 : 0 });
       }
       p.send({ t: 's', me: p.view(), p: pl, rb, o: list.length });
     }

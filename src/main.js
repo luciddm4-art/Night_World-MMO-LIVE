@@ -4,8 +4,11 @@ import { S } from './state.js';
 import { T, scene, cam, renderer, onResize } from './scene.js';
 import { animateCourtyard } from './courtyard.js';
 import { mkFig, animFig, upS } from './figures.js';
-import { hgt, updateWorld, isFree, setNodeQty, resetNodes } from './terrain.js';
-import { syncRabbits, updateRabbits, clearRabbits } from './rabbits.js';
+import { hgt, updateWorld, isFree, setNodeQty, resetNodes, updateNodeFx } from './terrain.js';
+import { syncRabbits, updateRabbits, clearRabbits, onHit } from './rabbits.js';
+import { burst, floatText, updateFx, updateFloaters, shake, applyShake, hurtFlash, flyGain } from './fx.js';
+import { sfx, initAudio } from './audio.js';
+import { vibrate, initSettings, closeSettings } from './settings.js';
 import { syncPlayers, updatePlayers, clearPlayers } from './players.js';
 import { on, send, connect, stop } from './net.js';
 import { say, showBoot, updateHPUI, updateHud } from './ui.js';
@@ -34,6 +37,8 @@ initInteract();
 initCombat();
 initChat();
 initAuth();
+initSettings();
+initAudio();
 updateHPUI();
 updateHud();
 updateMountButton();
@@ -44,7 +49,7 @@ initInput(renderer.domElement, {
   toggleInv,
   craft: () => openCraft(null),
   chat: openChat,
-  escape: () => { if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); },
+  escape: () => { if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
 });
 
 // ---- server messages ----
@@ -63,6 +68,7 @@ on('welcome', (m) => {
   m.chat.forEach((c) => addChat(c.n, c.m));
   addChat('', 'Welcome, ' + m.name + '.' + (m.guest ? ' Guest progress is not saved — log in next time to keep it.' : ''), true);
   S.ready = true;
+  cf.snap = true;
   sent.x = NaN;
   renderInv();
   updateMountButton();
@@ -90,9 +96,22 @@ on('inv', (m) => {
 });
 on('node', (m) => setNodeQty(m.id, m.qty));
 on('toast', (m) => say(m.m));
-on('fail', (m) => { say(m.m); onFail(); });
+on('fail', (m) => { say(m.m); sfx('error'); onFail(); });
+on('hit', onHit);
+on('hurt', (m) => {
+  sfx('hurt');
+  hurtFlash(Math.min(1, m.d / 200));
+  shake(0.35);
+  vibrate(60);
+  floatText(P.x, P.y + 2.2, P.z, '-' + m.d, 'hurt');
+});
+on('gain', (m) => {
+  sfx(m.src === 'craft' ? 'craft' : m.src === 'reward' ? 'reward' : 'pickup');
+  flyGain(m.item, m.n);
+  if (m.src === 'gather' || m.src === 'loot') vibrate(15);
+});
 on('cast', onCast);
-on('pos', (m) => { P.x = m.x; P.z = m.z; });
+on('pos', (m) => { P.x = m.x; P.z = m.z; vel.x = vel.z = 0; cf.snap = true; });
 on('chat', (m) => addChat(m.n, m.m));
 on('kick', (m) => { stop(); showBoot(m.m, 'Reload the page to play here again.'); });
 on('close', () => {
@@ -110,6 +129,9 @@ chatForm.addEventListener('submit', () => {
 // ---- main loop ----
 const clock = new T.Clock();
 const sent = { x: NaN, z: NaN, r: NaN, t: 0 };
+const vel = { x: 0, z: 0 }; // smoothed movement so starts and stops don't feel stiff
+const cf = { x: 0, y: 0, z: 0, snap: true }; // smoothed camera focus
+let dustT = 0, stepD = 0;
 let fr = 0;
 
 function loop() {
@@ -128,20 +150,32 @@ function loop() {
   const sy = Math.sin(yaw), cy = Math.cos(yaw);
   let mx = -sy * iz + cy * ix, mz = -cy * iz - sy * ix;
   const l = Math.hypot(mx, mz);
+  let tvx = 0, tvz = 0, aim = P.r;
   if (l > 0.05 && !S.gather.active) {
     if (l > 1) { mx /= l; mz /= l; }
     let sp = keys.ShiftLeft || keys.ShiftRight ? CFG.MAX_SPEED : 6;
     if (joy) sp = 6 + 10 * Math.max(0, (Math.hypot(joy.dx, joy.dy) - 0.7) / 0.3);
+    if (input.sprint) sp = CFG.MAX_SPEED;
     if (S.mounted) sp *= CFG.MOUNT_SPEED;
-    const nx = P.x + mx * sp * dt, nz = P.z + mz * sp * dt;
-    if (isFree(nx, P.z)) P.x = nx;
-    if (isFree(P.x, nz)) P.z = nz;
-    P.r = Math.atan2(mx, mz);
+    tvx = mx * sp; tvz = mz * sp;
+    aim = Math.atan2(mx, mz);
+  }
+  const kv = Math.min(1, dt * (tvx || tvz ? 12 : 18));
+  vel.x += (tvx - vel.x) * kv;
+  vel.z += (tvz - vel.z) * kv;
+  if (Math.abs(vel.x) + Math.abs(vel.z) > 0.03) {
+    const nx = P.x + vel.x * dt, nz = P.z + vel.z * dt;
+    if (isFree(nx, P.z)) P.x = nx; else vel.x = 0;
+    if (isFree(P.x, nz)) P.z = nz; else vel.z = 0;
+  }
+  if (tvx || tvz) { // turn smoothly, the short way round
+    const dr = Math.atan2(Math.sin(aim - P.r), Math.cos(aim - P.r));
+    P.r += dr * Math.min(1, dt * 20);
   }
 
   updateWorld();
   checkNear();
-  updateRabbits(dt);
+  updateRabbits(dt, now);
   updatePlayers(dt, now);
   updateDonkey();
 
@@ -164,11 +198,30 @@ function loop() {
   upS(me, now);
   animFig(me, dt, S.mounted ? 0 : psp, now);
 
+  // footsteps and sprint dust
+  if (!S.mounted && psp > 1.5) {
+    stepD += psp * dt;
+    if (stepD > 4.2) { stepD = 0; sfx('step'); }
+    if (psp > 10) {
+      dustT -= dt;
+      if (dustT <= 0) { dustT = 0.07; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
+    }
+  }
+
+  // camera follows with a little smoothing; snap if we were teleported
+  if (cf.snap || Math.hypot(P.x - cf.x, P.z - cf.z) > 12) { cf.x = P.x; cf.y = P.y; cf.z = P.z; cf.snap = false; }
+  const kc = Math.min(1, dt * 14);
+  cf.x += (P.x - cf.x) * kc; cf.y += (P.y - cf.y) * kc; cf.z += (P.z - cf.z) * kc;
   const d = S.mounted ? 9 : 7, cp = Math.cos(pitch);
-  cam.position.set(P.x + sy * cp * d, P.y + 2 + Math.sin(pitch) * d, P.z + cy * cp * d);
+  cam.position.set(cf.x + sy * cp * d, cf.y + 2 + Math.sin(pitch) * d, cf.z + cy * cp * d);
   cam.position.y = Math.max(cam.position.y, hgt(cam.position.x, cam.position.z) + 1);
-  cam.lookAt(P.x, P.y + 1.6, P.z);
+  cam.lookAt(cf.x, cf.y + 1.6, cf.z);
+  applyShake(cam, dt);
+  cam.updateMatrixWorld();
   animateCourtyard(t);
+  updateNodeFx(now);
+  updateFx(dt);
+  updateFloaters(now);
 
   renderer.render(scene, cam);
   requestAnimationFrame(loop);

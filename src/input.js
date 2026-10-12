@@ -1,5 +1,5 @@
 // Keyboard, touch joystick and drag-to-look.
-export const input = { keys: {}, joy: null, look: null, yaw: 0, pitch: 0.35 };
+export const input = { keys: {}, joy: null, look: null, sprint: false, yaw: 0, pitch: 0.35 };
 
 export function initInput(canvas, cb) {
   const { keys } = input;
@@ -37,7 +37,7 @@ export function initInput(canvas, cb) {
   canvas.addEventListener('pointerdown', (e) => {
     if (e.target !== canvas) return;
     try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    input.look = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    input.look = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() };
   });
   canvas.addEventListener('pointermove', (e) => {
     const look = input.look;
@@ -50,8 +50,21 @@ export function initInput(canvas, cb) {
   });
   const up = (e) => {
     if (input.joy && e.pointerId === input.joy.id) input.joy = null;
-    if (input.look && e.pointerId === input.look.id) input.look = null;
+    const look = input.look;
+    if (look && e.pointerId === look.id) {
+      input.look = null;
+      // desktop: a plain left click (no drag) is an attack
+      const tap = Math.hypot(e.clientX - look.x0, e.clientY - look.y0) < 6 && performance.now() - look.t0 < 350;
+      if (e.type === 'pointerup' && e.pointerType === 'mouse' && e.button === 0 && tap) cb.attack();
+    }
   };
+
+  const sprintBtn = document.getElementById('sprint');
+  sprintBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    input.sprint = !input.sprint;
+    sprintBtn.classList.toggle('on', input.sprint);
+  });
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', up);
 }
