@@ -140,16 +140,5 @@ export function animateCourtyard(t) {
   portalRing.rotation.z = t * 0.08;
 }
 
-// walls / stations / portal collision (trees are handled in terrain.js)
-export function courtFree(x, z) {
-  const a = Math.abs(x), b = Math.abs(z);
-  if (a < 11.6 && z > -8.2 && z < -5.2) return false;
-  if (Math.abs(z + 3.5) < 0.75 && (Math.abs(a - 3) < 0.75 || Math.abs(a - 10.5) < 0.75)) return false;
-  if (a < 13.5 && b < 13.5) {
-    if (Math.abs(a - 12) < 1 && b < 12.8) return false;
-    if (Math.abs(z + 12) < 1 && a < 12.8) return false;
-    if (Math.abs(z - 12) < 1 && a > 3 && a < 12.8) return false;
-  }
-  if (Math.hypot(x - PORTAL.x, z - PORTAL.z) < 2.5) return false;
-  return true;
-}
+// walls / stations / portal collision lives in shared/collision.js (the server checks it too)
+export { courtFree } from '../shared/collision.js';

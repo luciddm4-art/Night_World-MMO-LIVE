@@ -6,6 +6,7 @@ import {
   CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN,
 } from '../shared/data.js';
 import { createWorld } from '../shared/world.js';
+import { sweep } from '../shared/collision.js';
 import * as Inv from '../shared/inventory.js';
 import { round2 } from './player.js';
 
@@ -134,6 +135,17 @@ export class Room {
       }
     } else {
       p.moveBudget -= d;
+    }
+    // Solid things: walk the path and stop at the first wall/tree. Honest clients never hit
+    // this (they collide locally); it stops walking through walls with a modified client.
+    const sw = sweep(this.world, (k) => !this.isDepleted(k), p.x, p.z, nx, nz);
+    if (sw.blocked) {
+      nx = sw.x; nz = sw.z;
+      p.moveBudget = Math.max(0, p.moveBudget - 0.5);
+      if (now - (p.lastCorrection || 0) > 250) {
+        p.lastCorrection = now;
+        p.send({ t: 'pos', x: round2(nx), z: round2(nz) });
+      }
     }
     p.x = nx;
     p.z = nz;

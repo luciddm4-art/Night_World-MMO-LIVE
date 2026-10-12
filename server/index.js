@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws';
 import { normalizeSeed, NAME_RE } from '../shared/data.js';
 import { Room } from './room.js';
 import { Player } from './player.js';
-import { Store, hashPassword, verifyPassword } from './store.js';
+import { Store, PgBackend, hashPassword, verifyPassword } from './store.js';
 import { createStaticHandler } from './static.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,9 +35,12 @@ export function createGameServer(opts = {}) {
     now: opts.now ?? Date.now,
     tickMs: opts.tickMs ?? TICK_MS,
     log: opts.log ?? (() => {}),
+    databaseUrl: opts.databaseUrl === undefined ? process.env.DATABASE_URL || '' : opts.databaseUrl,
   };
 
-  const store = new Store(cfg.dataDir, { now: cfg.now });
+  // DATABASE_URL (or an explicit backend, used by tests) -> Postgres; otherwise the JSON file.
+  const backend = opts.backend || (cfg.databaseUrl ? new PgBackend({ url: cfg.databaseUrl }) : null);
+  const store = new Store(cfg.dataDir, { now: cfg.now, backend });
   store.load();
   const rooms = new Map(); // seed -> Room
   const online = new Map(); // account key -> {player, room, ws}
@@ -57,6 +60,8 @@ export function createGameServer(opts = {}) {
         players: [...rooms.values()].reduce((n, r) => n + r.players.size, 0),
         rooms: rooms.size,
         uptime: Math.round((cfg.now() - startedAt) / 1000),
+        storage: store.kind, // 'postgres' | 'file' | 'memory' (file/memory = progress is lost on redeploy)
+        storageOk: store.ok,
       });
       res.writeHead(200, {
         'content-type': 'application/json',
@@ -240,6 +245,10 @@ export function createGameServer(opts = {}) {
       let m;
       try { m = JSON.parse(raw); } catch { return; }
       if (!m || typeof m !== 'object') return;
+      if (m.t === 'ping') { // latency probe from the client; echo the number back
+        if (typeof m.n === 'number' && Number.isFinite(m.n) && ws.readyState === 1) ws.send(JSON.stringify({ t: 'pong', n: m.n }));
+        return;
+      }
       if (!ws.entry) {
         if (m.t === 'auth') onAuth(ws, m, ip);
         return;
@@ -282,18 +291,19 @@ export function createGameServer(opts = {}) {
     timers.forEach((t) => t.unref?.());
   }
 
-  function listen() {
+  async function listen() {
+    await store.init(); // connects to the database (if configured) before anyone can log in
     return new Promise((resolve) => {
       startTimers();
       server.listen(cfg.port, cfg.host, () => resolve(server.address().port));
     });
   }
 
-  function stop() {
+  async function stop() {
     timers.forEach(clearInterval);
     for (const e of online.values()) savePlayer(e);
-    store.flushSync();
     wss.clients.forEach((c) => c.terminate());
+    await store.close(); // final write to whichever backend is in use
     return new Promise((resolve) => wss.close(() => server.close(() => resolve())));
   }
 
@@ -303,7 +313,7 @@ export function createGameServer(opts = {}) {
 export async function start() {
   const gs = createGameServer({ log: (...a) => console.log('[nwo]', ...a) });
   const port = await gs.listen();
-  console.log('Night World server on port ' + port + ' (data dir: ' + gs.cfg.dataDir + ')');
+  console.log('Night World server on port ' + port + ' (storage: ' + gs.store.kind + (gs.store.kind === 'file' ? ', dir: ' + gs.cfg.dataDir + ' — NOT persistent on free hosting; set DATABASE_URL' : '') + ')');
   const shutdown = async (sig) => {
     console.log('[nwo] ' + sig + ' received, saving…');
     await gs.stop();

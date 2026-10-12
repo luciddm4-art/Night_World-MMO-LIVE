@@ -1,13 +1,19 @@
-// Tiny JSON-file persistence for accounts, login tokens and character saves.
+// Persistence for accounts, login tokens and character saves.
 //
-// IMPORTANT: this writes to DATA_DIR on the server's disk. Free hosts such as
-// Render's free tier have an *ephemeral* disk, so the file is wiped on every
-// redeploy / cold restart. Mount a persistent disk (or swap this class for a
-// database) if you want accounts to survive. The interface is deliberately small.
+// The Store keeps everything in memory (it is tiny) and writes changes through
+// a backend:
+//   * PgBackend   - Postgres, used when DATABASE_URL is set. Survives redeploys.
+//   * FileBackend - a JSON file in DATA_DIR. On Render's free tier the disk is
+//                   ephemeral, so this is only for local play, tests and as a
+//                   fallback if the database cannot be reached.
+//   * none        - memory only (dataDir === null), used by tests.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
+import { PgBackend } from './pg-backend.js';
+
+export { PgBackend };
 
 const scrypt = promisify(crypto.scrypt);
 const TOKEN_TTL_MS = 30 * 24 * 3600 * 1000;
@@ -25,31 +31,106 @@ export async function verifyPassword(password, salt, hashHex) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-export class Store {
-  constructor(dir, { now = Date.now } = {}) {
+
+// ------------------------------------------------------------------ file backend
+export class FileBackend {
+  constructor(dir) {
     this.dir = dir;
-    this.file = dir ? path.join(dir, 'accounts.json') : null; // dir === null -> memory only
-    this.now = now;
-    this.data = { accounts: {}, tokens: {} };
-    this.timer = null;
+    this.file = path.join(dir, 'accounts.json');
+    this.kind = 'file';
     this.writing = Promise.resolve();
   }
 
-  load() {
-    if (!this.file) return;
+  loadSync() {
     try {
       fs.mkdirSync(this.dir, { recursive: true });
       const raw = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      if (raw && raw.accounts && raw.tokens) this.data = raw;
+      if (raw && raw.accounts && raw.tokens) return raw;
     } catch (e) {
       if (e.code !== 'ENOENT') console.error('[store] could not read', this.file, e.message);
+    }
+    return null;
+  }
+
+  // The file is small, so every write is a full snapshot (atomic: tmp + rename).
+  write(data) {
+    const json = JSON.stringify(data);
+    const tmp = this.file + '.tmp';
+    this.writing = this.writing
+      .then(() => fs.promises.writeFile(tmp, json))
+      .then(() => fs.promises.rename(tmp, this.file))
+      .catch((e) => console.error('[store] write failed:', e.message));
+    return this.writing;
+  }
+
+  writeSync(data) {
+    try {
+      fs.mkdirSync(this.dir, { recursive: true });
+      const tmp = this.file + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(data));
+      fs.renameSync(tmp, this.file);
+    } catch (e) {
+      console.error('[store] sync write failed:', e.message);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ store
+export class Store {
+  // dir: folder for the file backend (null -> memory only)
+  // backend: optional explicit backend (e.g. a PgBackend)
+  constructor(dir, { now = Date.now, backend = null } = {}) {
+    this.dir = dir;
+    this.now = now;
+    this.backend = backend || (dir ? new FileBackend(dir) : null);
+    this.fallbackDir = dir;
+    this.data = { accounts: {}, tokens: {} };
+    this.dirtyAcc = new Set();
+    this.dirtyTok = new Set();
+    this.timer = null;
+    this.writing = Promise.resolve();
+    this.sigs = new WeakMap(); // account -> signature of the last saved character (skip no-op writes)
+    this.lastError = null;
+    this.ready = !(this.backend && this.backend.async);
+  }
+
+  get kind() { return this.backend ? this.backend.kind : 'memory'; }
+  get ok() { return !this.lastError; }
+
+  // Synchronous load for the file backend.
+  load() {
+    if (this.backend && !this.backend.async) {
+      const raw = this.backend.loadSync();
+      if (raw) this.data = raw;
+    }
+    this.prune();
+  }
+
+  // Async start-up: connects to the database and loads everything. If it fails we log it
+  // loudly and carry on with the file store, so the game stays playable.
+  async init() {
+    if (this.ready) return;
+    try {
+      const raw = await this.backend.load();
+      this.data = raw;
+      this.ready = true;
+      this.lastError = null;
+    } catch (e) {
+      console.error('[store] DATABASE UNAVAILABLE, falling back to the local file store:', e.message);
+      try { await this.backend.close?.(); } catch { /* ignore */ }
+      this.lastError = e.message;
+      this.backend = this.fallbackDir ? new FileBackend(this.fallbackDir) : null;
+      this.ready = true;
+      this.load();
     }
     this.prune();
   }
 
   prune() {
     const t = this.now();
-    for (const [h, v] of Object.entries(this.data.tokens)) if (v.exp < t) delete this.data.tokens[h];
+    for (const [h, v] of Object.entries(this.data.tokens)) {
+      if (v.exp < t) { delete this.data.tokens[h]; this.dirtyTok.add(h); }
+    }
   }
 
   get(name) { return this.data.accounts[String(name).toLowerCase()] || null; }
@@ -62,13 +143,16 @@ export class Store {
     // re-check: another register may have won the race while scrypt ran
     if (this.data.accounts[key]) return null;
     this.data.accounts[key] = { name, salt, hash, created: this.now(), save: null };
+    this.dirtyAcc.add(key);
     this.scheduleFlush();
     return this.data.accounts[key];
   }
 
   issueToken(name) {
     const token = crypto.randomBytes(32).toString('hex');
-    this.data.tokens[sha(token)] = { acct: name.toLowerCase(), exp: this.now() + TOKEN_TTL_MS };
+    const h = sha(token);
+    this.data.tokens[h] = { acct: name.toLowerCase(), exp: this.now() + TOKEN_TTL_MS };
+    this.dirtyTok.add(h);
     this.scheduleFlush();
     return token;
   }
@@ -81,7 +165,10 @@ export class Store {
   }
 
   revokeToken(token) {
-    if (typeof token === 'string') delete this.data.tokens[sha(token)];
+    if (typeof token !== 'string') return;
+    const h = sha(token);
+    delete this.data.tokens[h];
+    this.dirtyTok.add(h);
     this.scheduleFlush();
   }
 
@@ -89,6 +176,10 @@ export class Store {
   saveCharacter(name, save) {
     const acct = this.get(name);
     if (!acct) return;
+    const sig = JSON.stringify([save.inv, save.hpRatio, save.color, save.lastSeed, save.world]);
+    const same = this.sigs.get(acct) === sig;
+    this.sigs.set(acct, sig);
+    if (same && acct.save) return; // nothing changed since the last save: don't wake the database
     const prev = acct.save || { worlds: {} };
     const worlds = { ...(prev.worlds || {}) };
     worlds[String(save.lastSeed)] = { ...save.world, t: this.now() };
@@ -98,36 +189,52 @@ export class Store {
       for (const k of keys.slice(0, keys.length - MAX_WORLDS_SAVED)) delete worlds[k];
     }
     acct.save = { inv: save.inv, hpRatio: save.hpRatio, color: save.color, lastSeed: save.lastSeed, worlds };
+    this.dirtyAcc.add(name.toLowerCase());
     this.scheduleFlush();
   }
 
   scheduleFlush() {
-    if (!this.file || this.timer) return;
+    if (!this.backend || this.timer) return;
     this.timer = setTimeout(() => { this.timer = null; this.flush(); }, 1500);
     this.timer.unref?.();
   }
 
+  // Write pending changes. Failed writes keep their changes queued and are retried by the next flush.
   flush() {
-    if (!this.file) return Promise.resolve();
-    const json = JSON.stringify(this.data);
-    const tmp = this.file + '.tmp';
-    this.writing = this.writing
-      .then(() => fs.promises.writeFile(tmp, json))
-      .then(() => fs.promises.rename(tmp, this.file))
-      .catch((e) => console.error('[store] write failed:', e.message));
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (!this.backend || !this.ready) return this.writing;
+    this.writing = this.writing.then(async () => {
+      if (!this.backend || (!this.dirtyAcc.size && !this.dirtyTok.size && this.backend.kind === 'postgres')) return;
+      const accs = [...this.dirtyAcc], toks = [...this.dirtyTok];
+      this.dirtyAcc.clear();
+      this.dirtyTok.clear();
+      try {
+        await this.backend.write(this.data, {
+          accounts: accs.map((k) => [k, this.data.accounts[k] || null]),
+          tokens: toks.map((h) => [h, this.data.tokens[h] || null]),
+        });
+        this.lastError = null;
+      } catch (e) {
+        accs.forEach((k) => this.dirtyAcc.add(k));
+        toks.forEach((h) => this.dirtyTok.add(h));
+        this.lastError = e.message;
+        console.error('[store] write failed (will retry):', e.message);
+        this.scheduleFlush();
+      }
+    });
     return this.writing;
   }
 
+  // Sync flush for the file backend; for databases use close().
   flushSync() {
-    if (!this.file) return;
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
-    try {
-      fs.mkdirSync(this.dir, { recursive: true });
-      const tmp = this.file + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(this.data));
-      fs.renameSync(tmp, this.file);
-    } catch (e) {
-      console.error('[store] sync write failed:', e.message);
-    }
+    if (this.backend && this.backend.kind === 'file') this.backend.writeSync(this.data);
+  }
+
+  // Final flush on shutdown (works for every backend).
+  async close() {
+    await this.flush();
+    if (this.backend && this.backend.kind === 'file') this.backend.writeSync(this.data);
+    await this.backend?.close?.();
   }
 }

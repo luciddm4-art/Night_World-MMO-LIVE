@@ -108,3 +108,10 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
   .b{min-height:46px}
   #craftbtn{padding:8px 12px!important}
 }
+
+#netbanner{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:30;padding:6px 16px;border-radius:16px;background:rgba(160,60,30,.92);color:#fff;font:700 13px Georgia,serif;display:none;pointer-events:none}
+#netbanner.show{display:block}
+#ping{margin-left:8px;font-weight:700}
+#ping.good{color:#7be07b}
+#ping.ok{color:#f2d34a}
+#ping.bad{color:#ff6a5a}

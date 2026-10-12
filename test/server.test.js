@@ -6,10 +6,12 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import { createGameServer } from '../server/index.js';
 import { countItem } from '../shared/inventory.js';
+import { PGlite } from '@electric-sql/pglite';
+import { PgBackend } from '../server/store.js';
 
 async function boot(opts = {}) {
   const dataDir = opts.dataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'nwo-'));
-  const gs = createGameServer({ port: 0, host: '127.0.0.1', dataDir, tickMs: 50, ...opts });
+  const gs = createGameServer({ port: 0, host: '127.0.0.1', dataDir, tickMs: 50, databaseUrl: '', ...opts });
   const port = await gs.listen();
   return { gs, port, dataDir, url: `ws://127.0.0.1:${port}`, http: `http://127.0.0.1:${port}` };
 }
@@ -162,6 +164,75 @@ test('persistence: inventory and position survive logout, and a full server rest
     assert.equal(w2.seed, 42);
     assert.equal(w2.you.z, -1.5);
     assert.equal(w2.you.inv.slots[0].n, 7);
+    await c.close();
+  } finally { await env.gs.stop(); }
+});
+
+test('persistence on Postgres: progress and login token survive a full server restart', async () => {
+  const db = new PGlite(); // stands in for the Neon database; outlives both server instances
+  let env = await boot({ dataDir: null, backend: new PgBackend({ pool: db }) });
+  let token;
+  try {
+    const health = await (await fetch(env.http + '/health')).json();
+    assert.equal(health.storage, 'postgres');
+    assert.equal(health.storageOk, true);
+    const a = await login(env, { mode: 'register', name: 'Pgsaver', pass: 'secret123' });
+    const welcome = await a.next('welcome');
+    token = welcome.token;
+    const entry = env.gs.online.get('pgsaver');
+    entry.player.inv.slots[0] = { id: 'iron', n: 9 };
+    entry.player.x = 20; entry.player.z = 33;
+    await a.close();
+    await new Promise((r) => setTimeout(r, 100));
+  } finally { await env.gs.stop(); }
+
+  env = await boot({ dataDir: null, backend: new PgBackend({ pool: db }) }); // "redeploy": fresh process, empty disk
+  try {
+    const b = await login(env, { mode: 'token', token });
+    const w = await b.next('welcome');
+    assert.equal(w.name, 'Pgsaver');
+    assert.equal(w.you.inv.slots[0].n, 9);
+    assert.equal(w.you.x, 20);
+    await b.close();
+    const c = await login(env, { mode: 'login', name: 'Pgsaver', pass: 'secret123' });
+    assert.ok(await c.next('welcome'), 'password login works too');
+    await c.close();
+  } finally { await env.gs.stop(); }
+  await db.close();
+});
+
+test('a bad DATABASE_URL does not stop the game: falls back to files and says so on /health', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nwo-'));
+  const origErr = console.error;
+  console.error = () => {};
+  let env;
+  try {
+    env = await boot({ dataDir, databaseUrl: 'postgres://nobody:nothing@127.0.0.1:1/none' }); // nothing listens on port 1
+  } finally { console.error = origErr; }
+  try {
+    const health = await (await fetch(env.http + '/health')).json();
+    assert.equal(health.storage, 'file');
+    assert.equal(health.storageOk, false);
+    const c = await login(env, { mode: 'register', name: 'Fallback', pass: 'secret123' });
+    assert.ok(await c.next('welcome'), 'players can still register and play');
+    await c.close();
+  } finally { await env.gs.stop(); }
+});
+
+test('ping: the server echoes the probe (before and after login) and ignores junk', async () => {
+  const env = await boot({ dataDir: null });
+  try {
+    const c = client(env.url);
+    await c.opened;
+    c.send({ t: 'ping', n: 12345 });
+    assert.equal((await c.next('pong')).n, 12345, 'works before login too');
+    c.send({ t: 'ping', n: 'abc' });
+    c.send({ t: 'ping' });
+    c.send({ t: 'auth', seed: 7, mode: 'guest' });
+    await c.next('welcome');
+    c.send({ t: 'ping', n: 777 });
+    assert.equal((await c.next('pong')).n, 777, 'and in the game');
+    await assert.rejects(c.next('pong', 300), /timeout/, 'junk pings get no reply');
     await c.close();
   } finally { await env.gs.stop(); }
 });

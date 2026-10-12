@@ -3,7 +3,7 @@ import { S } from './state.js';
 const $ = (id) => document.getElementById(id);
 export const el = {
   toasts: $('toasts'), hpfill: $('hpfill'), hplabel: $('hplabel'), hud: $('hud'), who: $('who'),
-  boot: $('boot'), bootmsg: $('bootmsg'), boothint: $('boothint'), err: $('err'),
+  boot: $('boot'), banner: $('netbanner'), bootmsg: $('bootmsg'), boothint: $('boothint'), err: $('err'),
 };
 
 // Stacked toasts: up to 4 lines, each fades on its own.
@@ -30,7 +30,20 @@ export function updateHPUI() {
 export function updateHud() {
   el.hud.textContent = 'DMG ' + Math.round(S.st.dmg * 100) + '%   CD ' + Math.round(S.st.haste * 100) + '%   DEF ' + Math.round(S.st.def * 100) + '%';
   el.who.textContent = (S.name ? S.name + ' · ' : '') + S.online + ' online';
+  el.who.appendChild(pingEl);
 }
+
+// Connection quality next to the online count.
+const pingEl = document.createElement('span');
+pingEl.id = 'ping';
+export function setPing(ms) {
+  if (ms == null) { pingEl.textContent = ''; pingEl.className = ''; return; }
+  pingEl.textContent = ms + ' ms';
+  pingEl.className = ms < 90 ? 'good' : ms < 220 ? 'ok' : 'bad';
+}
+// A small pill for short drops, so the game stays visible while we reconnect.
+export function showBanner(msg) { el.banner.textContent = msg; el.banner.classList.add('show'); }
+export function hideBanner() { el.banner.classList.remove('show'); }
 
 export function showBoot(msg, hint = '') {
   el.boot.classList.add('show');

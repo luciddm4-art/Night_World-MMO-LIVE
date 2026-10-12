@@ -3,8 +3,19 @@ import assert from 'node:assert/strict';
 import { makeRoom, makePlayer, findThings, giveItems, fillBag } from './helpers.js';
 import { countItem } from '../shared/inventory.js';
 import { CFG, STATIONS, STATION_Z } from '../shared/data.js';
+import { isFree, courtFree } from '../shared/collision.js';
 
-const { tree, node } = findThings(7);
+const { tree, node, world } = findThings(7);
+
+// a stretch of open ground running along +x (no trees, outside the spawn hall)
+function openRun(len = 130) {
+  for (let z = 30; z < 400; z += 1) {
+    let ok = true;
+    for (let x = 30; x <= 30 + len && ok; x += 0.25) ok = isFree(world, () => true, x, z, -0.8);
+    if (ok) return { x0: 30, z };
+  }
+  throw new Error('no open run found');
+}
 
 function gatherOnce(room, now, p, kind, id) {
   p.out.length = 0;
@@ -173,12 +184,13 @@ test('movement: teleporting is clamped and the client is told to snap back', () 
 
 test('movement: legitimate sprinting is never corrected', () => {
   const { room, now } = makeRoom();
-  const p = makePlayer(room, 'a', { x: 0, z: 0 });
-  let x = 0;
+  const run = openRun();
+  const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
+  let x = run.x0;
   for (let i = 0; i < 100; i++) { // 7 seconds at full sprint, packets every 70 ms
     now.advance(70);
     x += CFG.MAX_SPEED * 0.07;
-    room.handle(p, { t: 'p', x, z: 0, r: 1 });
+    room.handle(p, { t: 'p', x, z: run.z, r: 1 });
   }
   assert.equal(p.last('pos'), undefined);
   assert.ok(Math.abs(p.x - x) < 1e-9);
@@ -453,4 +465,73 @@ test('events: bites tell the victim how much it hurt; gathers, loot and crafts r
   giveItems(q, 'iron', 3);
   room.handle(q, { t: 'craft', id: 'c_ihelm' });
   assert.deepEqual(q.last('gain'), { t: 'gain', item: 'iron_helm', n: 1, src: 'craft' });
+});
+
+
+// ---------------------------------------------------------------- collision (server side)
+test('collision: you cannot walk through the spawn hall wall', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 0, z: -4 });
+  now.advance(1000);
+  room.handle(p, { t: 'p', x: 0, z: -9.5, r: 0 }); // the back wall / station row is at z -8.2 .. -5.2
+  assert.ok(p.z > -5.6, 'stopped at the wall, z=' + p.z);
+  assert.ok(p.last('pos'), 'client told to snap back');
+});
+
+test('collision: a huge jump cannot tunnel over a thin wall', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: 0, z: 0 });
+  now.advance(60000); // lots of saved-up movement budget
+  p.moveBudget = 100;
+  room.handle(p, { t: 'p', x: 25, z: 0, r: 0 }); // the east wall is at x = 12
+  assert.ok(p.x < 11.5, 'did not pass the east wall, x=' + p.x);
+});
+
+test('collision: walking along a wall is smooth and not corrected', () => {
+  const { room, now } = makeRoom();
+  const p = makePlayer(room, 'a', { x: -6, z: -4 });
+  for (let i = 1; i <= 40; i++) { // hug the station row (free ground is z >= -5.2) while sprinting sideways
+    now.advance(70);
+    room.handle(p, { t: 'p', x: -6 + i * 0.25, z: -4.7, r: 1 });
+  }
+  assert.equal(p.last('pos'), undefined);
+  assert.ok(Math.abs(p.x - 4) < 1e-9);
+});
+
+test('collision: standing trees block, and a felled tree does not', () => {
+  const { room, now } = makeRoom();
+  const [X, Z] = tree.id.split(',').map(Number);
+  const t = world.ctrees(X, Z);
+  const tx = t[0], tz = t[1];
+  const start = { x: tx - 4, z: tz };
+  assert.ok(isFree(world, () => true, start.x, start.z, 0.3), 'test needs a clear start');
+  const run = (name) => {
+    const p = makePlayer(room, name, start);
+    now.advance(2000);
+    room.handle(p, { t: 'p', x: tx + 4, z: tz, r: 0 }); // straight through the trunk
+    return p;
+  };
+  const a = run('a');
+  assert.ok(a.x < tx, 'blocked by the tree: x=' + a.x + ' tree=' + tx);
+  room.depleted.set(tree.id, { qty: 0, readyAt: now() + 10000 });
+  const b = run('b');
+  assert.ok(b.x > tx, 'passes once the tree is gone');
+});
+
+test('collision: a player trapped inside an obstacle is never frozen in place', () => {
+  const { room, now } = makeRoom();
+  const [X, Z] = tree.id.split(',').map(Number);
+  const t = world.ctrees(X, Z);
+  const p = makePlayer(room, 'a', { x: t[0], z: t[1] }); // a tree grew right on top of them
+  now.advance(1000);
+  room.handle(p, { t: 'p', x: t[0] + 3, z: t[1], r: 0 });
+  assert.ok(Math.abs(p.x - (t[0] + 3)) < 1e-6, 'free to walk out');
+});
+
+test('collision: client and server agree on the hall layout', () => {
+  assert.equal(courtFree(0, 0), true);
+  assert.equal(courtFree(0, -7), false);
+  assert.equal(courtFree(12, 0), false);
+  assert.equal(courtFree(0, 8), false, 'the portal');
+  assert.equal(courtFree(0, 12), true, 'the gap in the south wall');
 });
