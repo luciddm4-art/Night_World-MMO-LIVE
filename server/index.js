@@ -248,6 +248,9 @@ export function createGameServer(opts = {}) {
   const wss = new WebSocketServer({
     server,
     maxPayload: 4096,
+    // Compresses big messages: measured 3-4x less data on the wire (tools/loadtest.mjs) for ~50 % more CPU. Render's free
+    // plan includes very little bandwidth, so this is ON; WS_DEFLATE=0 turns it off if CPU becomes the problem.
+    perMessageDeflate: process.env.WS_DEFLATE !== '0' ? { threshold: 512, zlibDeflateOptions: { level: 1 }, serverNoContextTakeover: true, clientNoContextTakeover: true, concurrencyLimit: 4 } : false,
     verifyClient: (info, done) => (originAllowed(info.req) ? done(true) : done(false, 403, 'Forbidden origin')),
   });
 
@@ -498,7 +501,7 @@ export function createGameServer(opts = {}) {
 }
 
 export async function start() {
-  const maxPlayers = Number(process.env.MAX_PLAYERS) > 0 ? Number(process.env.MAX_PLAYERS) : 120;
+  const maxPlayers = Number(process.env.MAX_PLAYERS) > 0 ? Number(process.env.MAX_PLAYERS) : 40; // measured with tools/loadtest.mjs squeezed into 10 % of a core (Render free): ~40 players with compression on is the limit
   const gs = createGameServer({ log: (...a) => console.log('[nwo]', ...a), allowedSeeds: parseSeeds(process.env.WORLD_SEEDS), maxPlayers });
   console.log('[nwo] worlds: ' + [...gs.cfg.allowedSeeds].join(',') + ' · max players: ' + maxPlayers);
   const port = await gs.listen();

@@ -187,7 +187,7 @@ worker) and `src/pwa.js` (registers the worker and shows the install button on t
 | Limit | Default | Setting |
 |---|---|---|
 | Worlds that can be opened | the start world (7) + the four Travel Planner worlds (42, 100, 999, 2025) | `WORLD_SEEDS=7,42` |
-| Players on the whole server | 120 | `MAX_PLAYERS=200` |
+| Players on the whole server | 40 (free plan; raise on a paid instance) | `MAX_PLAYERS=150` |
 | Players per world | 40 | |
 | Sockets at once from one network | 12 | |
 | Messages per second per socket | ~50 sustained (bursts of 80) | |
@@ -227,3 +227,10 @@ admin command just see "Unknown command".
 - `/health` adds `tickMs {avg, max}` (how long one 100 ms server tick takes) and `maxPlayers`.
 - **Backups:** Neon's free plan only restores the last 6 hours, so there is a nightly encrypted export, plus
   `tools/export.mjs` / `tools/import.mjs`. Setup and restore steps: [docs/BACKUP.md](docs/BACKUP.md).
+
+## Load test
+
+`npm run loadtest -- --players 40 --seconds 20 [--worlds 2] [--throttle 0.1]` starts the real server as its own process and
+connects simulated players that walk, fight and chat, then prints tick time, latency, bandwidth, CPU and memory.
+`--throttle 0.1` squeezes the server into 10 % of a core to imitate Render's free tier. Results and what they mean:
+[docs/HOSTING.md](docs/HOSTING.md).

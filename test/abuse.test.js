@@ -133,3 +133,12 @@ test('junk on the wire (bad JSON, binary, huge frames, flood) does not hurt the 
     good.ws.terminate();
   } finally { await env.gs.stop(); }
 });
+
+test('snapshots are compressed on the wire by default (Render\'s free plan has very little bandwidth)', async () => {
+  const env = await boot();
+  try {
+    const c = sock(env.url); await c.opened;
+    assert.match(String(c.ws.extensions), /permessage-deflate/);
+    c.ws.terminate();
+  } finally { await env.gs.stop(); }
+});
