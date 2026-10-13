@@ -173,3 +173,11 @@ worker) and `src/pwa.js` (registers the worker and shows the install button on t
   slow. The game itself still needs the server, and the worker never touches the websocket or `/health`.
 - Updates: the page is always fetched fresh first, and scripts have hashed URLs (`npm run stamp`), so a deploy reaches
   installed apps on the next open. If you change `sw.js` itself, bump `CACHE` in it.
+
+## Checks that run on every pull request
+
+- **CI** (`npm test`): ~110 unit and server tests, plus an advisory `npm audit` (never blocks a merge).
+- **Browser test** (`.github/workflows/e2e.yml`): the real game in headless Chromium — login, move, gather, craft,
+  fight, chat, reconnect, module loading. Screenshots are attached to the run if it fails. Run it yourself with
+  `npm i --no-save playwright && npx playwright install chromium && node e2e/e2e.mjs`.
+- **Dependabot** opens a weekly PR for outdated npm packages and GitHub Actions.
