@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { normalizeSeed, NAME_RE, WORLDS } from '../shared/data.js';
+import { makeFilter, reservedName, parseList, parseCommand } from './moderation.js';
 import { Room } from './room.js';
 import { Player } from './player.js';
 import { Store, PgBackend, hashPassword, verifyPassword } from './store.js';
@@ -44,6 +45,8 @@ export function createGameServer(opts = {}) {
     maxRooms: opts.maxRooms ?? 16,
     allowedSeeds: opts.allowedSeeds ? new Set(opts.allowedSeeds.map(normalizeSeed)) : null, // null = any seed
     maxPlayers: opts.maxPlayers ?? Infinity, // whole server, all worlds
+    admins: new Set((opts.admins ?? parseList(process.env.ADMINS)).map((n) => String(n).toLowerCase())), // account names allowed to use /kick /mute /ban ...
+    chatBlocklist: opts.chatBlocklist ?? parseList(process.env.CHAT_BLOCKLIST), // extra words to hide, on top of the built-in list
     maxConnsPerIp: opts.maxConnsPerIp ?? 12, // sockets at once from one network (phones on mobile data share addresses)
     now: opts.now ?? Date.now,
     tickMs: opts.tickMs ?? TICK_MS,
@@ -60,6 +63,10 @@ export function createGameServer(opts = {}) {
   const failedLogins = new Map(); // ip -> [timestamps]
   const registrations = new Map(); // ip -> [timestamps]
   const connsByIp = new Map(); // ip -> open sockets
+  const entries = new Set(); // every joined player {player, room, ws}, guests included
+  const mutes = new Map(); // lower-case name -> muted until (ms)
+  const reports = []; // newest last, kept in memory (and logged)
+  const filter = makeFilter(cfg.chatBlocklist);
   const totalPlayers = () => [...rooms.values()].reduce((n, r) => n + r.players.size, 0);
   const startedAt = cfg.now();
   let nextId = 1;
@@ -91,6 +98,110 @@ export function createGameServer(opts = {}) {
     res.writeHead(404, { 'content-type': 'text/plain' });
     res.end('Not found\n');
   });
+
+  // ---------------------------------------------------------------- moderation commands (typed in chat)
+  const isAdmin = (p) => !!p.account && cfg.admins.has(p.account);
+  const findByName = (n) => { const k = String(n || '').toLowerCase(); for (const e of entries) if (e.player.name.toLowerCase() === k) return e; return null; };
+  function kick(e, why) {
+    send(e.ws, { t: 'kick', m: why });
+    detach(e.ws);
+    e.ws.close(4003, 'kicked');
+  }
+  function runCommand(entry, line) {
+    const { player: p, room } = entry;
+    const c = parseCommand(line);
+    if (!c) return room.fail(p, 'Unknown command. Type /help');
+    const say = (m) => room.toast(p, m);
+    const admin = isAdmin(p);
+    const target = () => {
+      const e = findByName(c.args[0]);
+      if (!e) room.fail(p, 'Nobody called "' + String(c.args[0] || '').slice(0, 20) + '" is online');
+      return e;
+    };
+    switch (c.cmd) {
+      case 'help':
+        say('/report <name> <reason> — tell the moderators about a player');
+        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports');
+        return;
+      case 'report': {
+        const t = findByName(c.args[0]);
+        if (!c.args[0] || !t) return room.fail(p, 'Usage: /report <name> <what happened> (the player must be online)');
+        if (t.player === p) return room.fail(p, 'You cannot report yourself');
+        const now = cfg.now();
+        if (p.lastReport && now - p.lastReport < 30000) return room.fail(p, 'Please wait a little before sending another report');
+        p.lastReport = now;
+        const r = { ts: now, by: p.name, target: t.player.name, reason: c.args.slice(1).join(' ').slice(0, 120) || '(no reason)' };
+        reports.push(r);
+        if (reports.length > 50) reports.shift();
+        cfg.log('REPORT', r.by, '->', r.target + ':', r.reason);
+        return say('Thanks — the moderators have been told.');
+      }
+      case 'reports': {
+        if (!admin) break;
+        if (!reports.length) return say('No reports.');
+        for (const r of reports.slice(-5)) say(r.by + ' reported ' + r.target + ': ' + r.reason);
+        return;
+      }
+      case 'kick': {
+        if (!admin) break;
+        const e = target(); if (!e) return;
+        if (isAdmin(e.player)) return room.fail(p, 'You cannot do that to another admin');
+        cfg.log('ADMIN', p.name, 'kick', e.player.name);
+        kick(e, 'A moderator removed you from the game.');
+        return say('Kicked ' + e.player.name);
+      }
+      case 'mute': {
+        if (!admin) break;
+        const e = target(); if (!e) return;
+        if (isAdmin(e.player)) return room.fail(p, 'You cannot do that to another admin');
+        const min = Math.max(1, Math.min(1440, Math.floor(Number(c.args[1]) || 10)));
+        const until = cfg.now() + min * 60000;
+        mutes.set(e.player.name.toLowerCase(), until);
+        e.player.mutedUntil = until;
+        cfg.log('ADMIN', p.name, 'mute', e.player.name, min + ' min');
+        room.toast(e.player, 'A moderator muted you for ' + min + ' minute(s).');
+        return say('Muted ' + e.player.name + ' for ' + min + ' min');
+      }
+      case 'unmute': {
+        if (!admin) break;
+        const k = String(c.args[0] || '').toLowerCase();
+        if (!mutes.delete(k)) return room.fail(p, k + ' is not muted');
+        const e = findByName(k); if (e) e.player.mutedUntil = 0;
+        cfg.log('ADMIN', p.name, 'unmute', k);
+        return say('Unmuted ' + k);
+      }
+      case 'ban': {
+        if (!admin) break;
+        const name = String(c.args[0] || '');
+        const acct = NAME_RE.test(name) ? store.get(name) : null;
+        if (!acct) return room.fail(p, 'No account called "' + name.slice(0, 20) + '" (guests can only be kicked)');
+        if (cfg.admins.has(acct.name.toLowerCase())) return room.fail(p, 'You cannot do that to another admin');
+        const reason = c.args.slice(1).join(' ').slice(0, 80);
+        store.setBan(acct.name, { reason, by: p.name, ts: cfg.now() });
+        const e = findByName(acct.name); if (e) kick(e, 'You have been banned' + (reason ? ': ' + reason : '.'));
+        cfg.log('ADMIN', p.name, 'ban', acct.name, reason);
+        return say('Banned ' + acct.name);
+      }
+      case 'unban': {
+        if (!admin) break;
+        const name = String(c.args[0] || '');
+        if (!NAME_RE.test(name) || !store.get(name) || !store.get(name).banned) return room.fail(p, name.slice(0, 20) + ' is not banned');
+        store.setBan(name, null);
+        cfg.log('ADMIN', p.name, 'unban', name);
+        return say('Unbanned ' + name);
+      }
+      case 'say': {
+        if (!admin) break;
+        if (!c.rest) return room.fail(p, 'Usage: /say <message>');
+        const msg = { t: 'chat', n: 'Server', m: c.rest.slice(0, 120), ts: cfg.now() };
+        for (const r of rooms.values()) r.broadcast(msg);
+        cfg.log('ADMIN', p.name, 'say', c.rest);
+        return;
+      }
+      default:
+    }
+    room.fail(p, 'Unknown command. Type /help');
+  }
 
   // ---------------------------------------------------------------- websocket
   function originAllowed(req) {
@@ -125,7 +236,7 @@ export function createGameServer(opts = {}) {
     let r = rooms.get(seed);
     if (!r) {
       if (rooms.size >= cfg.maxRooms) return null;
-      r = new Room(seed, { now: cfg.now });
+      r = new Room(seed, { now: cfg.now, chatFilter: (t) => filter.clean(t) });
       rooms.set(seed, r);
       cfg.log('room opened', seed);
     }
@@ -140,6 +251,7 @@ export function createGameServer(opts = {}) {
     const entry = ws.entry;
     if (!entry) return;
     ws.entry = null;
+    entries.delete(entry);
     entry.room.removePlayer(entry.player);
     savePlayer(entry);
     const key = entry.player.account;
@@ -167,6 +279,7 @@ export function createGameServer(opts = {}) {
         const n = typeof m.name === 'string' ? m.name.trim() : '';
         const pw = typeof m.pass === 'string' ? m.pass : '';
         if (!NAME_RE.test(n)) return authErr(ws, 'Name must be 3-16 letters, numbers or _');
+        if (reservedName(n) || filter.badName(n)) return authErr(ws, 'That name is not allowed. Please pick another.');
         if (pw.length < 6 || pw.length > 64) return authErr(ws, 'Password must be 6-64 characters');
         if (recent(registrations, ip, 3600e3).length >= 5) return authErr(ws, 'Too many new accounts from this network. Try later.');
         acct = await store.create(n, pw);
@@ -199,6 +312,7 @@ export function createGameServer(opts = {}) {
       }
 
       if (ws.readyState !== 1) return; // left while we were hashing
+      if (acct && acct.banned) return authErr(ws, 'This account is banned' + (acct.banned.reason ? ': ' + acct.banned.reason : '.'), { clearToken: true });
 
       if (totalPlayers() >= cfg.maxPlayers) return authErr(ws, 'The server is full right now. Please try again in a few minutes.');
       const room = getRoom(seed);
@@ -227,6 +341,8 @@ export function createGameServer(opts = {}) {
       else room.ensureStandable(player);
       const entry = { player, room, ws };
       ws.entry = entry;
+      entries.add(entry);
+      player.mutedUntil = mutes.get(name.toLowerCase()) || 0;
       if (key) online.set(key, entry);
       const welcome = room.addPlayer(player);
       welcome.guest = !acct;
@@ -274,6 +390,10 @@ export function createGameServer(opts = {}) {
       }
       if (!ws.entry) {
         if (m.t === 'auth') onAuth(ws, m, ip);
+        return;
+      }
+      if (m.t === 'chat' && typeof m.m === 'string' && m.m.trimStart().startsWith('/')) {
+        try { runCommand(ws.entry, m.m); } catch (e) { console.error('[cmd] error:', e); }
         return;
       }
       try {
@@ -330,7 +450,7 @@ export function createGameServer(opts = {}) {
     return new Promise((resolve) => wss.close(() => server.close(() => resolve())));
   }
 
-  return { server, wss, store, rooms, online, listen, stop, cfg };
+  return { server, wss, store, rooms, online, entries, mutes, reports, listen, stop, cfg };
 }
 
 export async function start() {

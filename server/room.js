@@ -22,8 +22,9 @@ const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 export class Room {
-  constructor(seed, { now = Date.now, rng = Math.random } = {}) {
+  constructor(seed, { now = Date.now, rng = Math.random, chatFilter = null } = {}) {
     this.seed = seed;
+    this.chatFilter = chatFilter; // (text) => cleaned text
     this.now = now;
     this.rng = rng;
     this.world = createWorld(seed);
@@ -391,9 +392,10 @@ export class Room {
     const now = this.now();
     p.chatTokens = Math.min(3, p.chatTokens + (now - (p.chatT || now)) / 2000);
     p.chatT = now;
+    if (p.mutedUntil && now < p.mutedUntil) return this.fail(p, 'You are muted for ' + Math.ceil((p.mutedUntil - now) / 60000) + ' more minute(s)');
     if (p.chatTokens < 1) return this.fail(p, 'You are chatting too fast');
     p.chatTokens -= 1;
-    const msg = { t: 'chat', n: p.name, m: text, ts: now };
+    const msg = { t: 'chat', n: p.name, m: this.chatFilter ? this.chatFilter(text) : text, ts: now };
     this.chatLog.push(msg);
     if (this.chatLog.length > 30) this.chatLog.shift();
     this.broadcast(msg);
