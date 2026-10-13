@@ -47,6 +47,7 @@ export function createGameServer(opts = {}) {
     maxPlayers: opts.maxPlayers ?? Infinity, // whole server, all worlds
     admins: new Set((opts.admins ?? parseList(process.env.ADMINS)).map((n) => String(n).toLowerCase())), // account names allowed to use /kick /mute /ban ...
     chatBlocklist: opts.chatBlocklist ?? parseList(process.env.CHAT_BLOCKLIST), // extra words to hide, on top of the built-in list
+    statsMs: opts.statsMs ?? 5 * 60 * 1000,
     maxConnsPerIp: opts.maxConnsPerIp ?? 12, // sockets at once from one network (phones on mobile data share addresses)
     now: opts.now ?? Date.now,
     tickMs: opts.tickMs ?? TICK_MS,
@@ -67,6 +68,9 @@ export function createGameServer(opts = {}) {
   const mutes = new Map(); // lower-case name -> muted until (ms)
   const reports = []; // newest last, kept in memory (and logged)
   const filter = makeFilter(cfg.chatBlocklist);
+  const clientErrs = new Map(); // ip -> [timestamps] (rate limit for browser error reports)
+  const clientErrors = []; // newest last (also logged)
+  const tickStat = { n: 0, sum: 0, max: 0, lastAvg: 0, lastMax: 0 }; // how long one server tick takes
   const totalPlayers = () => [...rooms.values()].reduce((n, r) => n + r.players.size, 0);
   const startedAt = cfg.now();
   let nextId = 1;
@@ -85,6 +89,7 @@ export function createGameServer(opts = {}) {
         uptime: Math.round((cfg.now() - startedAt) / 1000),
         storage: store.kind, // 'postgres' | 'file' | 'memory' (file/memory = progress is lost on redeploy)
         storageOk: store.ok,
+        tickMs: { avg: +(tickStat.n ? tickStat.sum / tickStat.n : tickStat.lastAvg).toFixed(2), max: +Math.max(tickStat.max, tickStat.lastMax).toFixed(2) },
       });
       res.writeHead(200, {
         'content-type': 'application/json',
@@ -92,6 +97,31 @@ export function createGameServer(opts = {}) {
         'cache-control': 'no-store',
       });
       res.end(req.method === 'HEAD' ? undefined : body);
+      return;
+    }
+    if (url === '/clienterr' && (req.method === 'POST' || req.method === 'OPTIONS')) {
+      const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'content-type' };
+      if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
+      const ip = clientIp(req);
+      let size = 0; const chunks = [];
+      req.on('data', (c) => { size += c.length; if (size <= 2048) chunks.push(c); else if (size > 65536) req.destroy(); });
+      req.on('error', () => {});
+      req.on('end', () => {
+        if (size > 2048) { res.writeHead(413, cors); res.end(); return; }
+        const recentErrs = recent(clientErrs, ip, 60000);
+        if (recentErrs.length >= 10) { res.writeHead(429, cors); res.end(); return; }
+        recentErrs.push(cfg.now());
+        let rec;
+        try { rec = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { rec = null; }
+        if (!rec || typeof rec.m !== 'string') { res.writeHead(400, cors); res.end(); return; }
+        const clean = (v, n) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, n);
+        const entry = { ts: cfg.now(), m: clean(rec.m, 400), v: clean(rec.v, 12), ua: clean(rec.ua, 100) };
+        clientErrors.push(entry);
+        if (clientErrors.length > 20) clientErrors.shift();
+        cfg.log('CLIENT-ERROR', `[build ${entry.v || '?'}]`, entry.m, '|', entry.ua);
+        res.writeHead(204, cors);
+        res.end();
+      });
       return;
     }
     if (serveStatic(req, res)) return;
@@ -406,11 +436,22 @@ export function createGameServer(opts = {}) {
     ws.on('error', () => {});
   });
 
+  // ---------------------------------------------------------------- stats line
+  function statsLine() {
+    const avg = tickStat.n ? tickStat.sum / tickStat.n : 0;
+    const mem = process.memoryUsage();
+    cfg.log('stats', `players=${totalPlayers()} worlds=${rooms.size} sockets=${wss.clients.size} tick avg=${avg.toFixed(2)}ms max=${tickStat.max.toFixed(1)}ms (budget ${cfg.tickMs}ms)`, `rss=${Math.round(mem.rss / 1048576)}MB heap=${Math.round(mem.heapUsed / 1048576)}MB`, `storage=${store.kind}${store.ok ? '' : ' DOWN: ' + store.lastError}`);
+    tickStat.lastAvg = avg; tickStat.lastMax = tickStat.max;
+    tickStat.n = 0; tickStat.sum = 0; tickStat.max = 0;
+    return { avg, ms: tickStat.lastMax };
+  }
+
   // ---------------------------------------------------------------- timers
   const timers = [];
   function startTimers() {
     timers.push(setInterval(() => {
       const t = cfg.now();
+      const t0 = performance.now();
       for (const [seed, room] of rooms) {
         try { room.tick(); } catch (e) { console.error('[room] tick error:', e); }
         if (room.emptySince !== null && t - room.emptySince > ROOM_IDLE_MS) {
@@ -418,7 +459,10 @@ export function createGameServer(opts = {}) {
           cfg.log('room closed', seed);
         }
       }
+      const dt = performance.now() - t0;
+      tickStat.n++; tickStat.sum += dt; if (dt > tickStat.max) tickStat.max = dt;
     }, cfg.tickMs));
+    timers.push(setInterval(() => statsLine(), cfg.statsMs)); // one summary line every few minutes in the logs
     timers.push(setInterval(() => {
       for (const e of online.values()) savePlayer(e);
       store.prune();
@@ -450,7 +494,7 @@ export function createGameServer(opts = {}) {
     return new Promise((resolve) => wss.close(() => server.close(() => resolve())));
   }
 
-  return { server, wss, store, rooms, online, entries, mutes, reports, listen, stop, cfg };
+  return { server, wss, store, rooms, online, entries, mutes, reports, clientErrors, statsLine, listen, stop, cfg };
 }
 
 export async function start() {
@@ -465,6 +509,13 @@ export async function start() {
     gs.server.on('close', () => ka.stop());
     console.log('[nwo] keep-alive: pinging ' + kaUrl + ' every 4 min');
   } else console.log('[nwo] keep-alive: off (no RENDER_EXTERNAL_URL / KEEPALIVE_URL)');
+  // a bug must leave a trace in the logs (Render keeps them), and a half-broken process must not linger
+  process.on('unhandledRejection', (e) => console.error('[nwo] UNHANDLED REJECTION:', e));
+  process.on('uncaughtException', async (e) => {
+    console.error('[nwo] UNCAUGHT EXCEPTION, saving and restarting:', e);
+    try { await gs.stop(); } catch { /* ignore */ }
+    process.exit(1);
+  });
   const shutdown = async (sig) => {
     console.log('[nwo] ' + sig + ' received, saving…');
     await gs.stop();

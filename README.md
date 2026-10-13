@@ -218,3 +218,12 @@ worker) and `src/pwa.js` (registers the worker and shows the install button on t
 
 Admins can't kick, mute or ban each other. Every admin action is logged as `ADMIN …`. Non-admins who type an
 admin command just see "Unknown command".
+
+## Logs, health and backups
+
+- **Render logs** now show: `stats players=… worlds=… tick avg=…ms max=…ms rss=…MB storage=…` every 5 minutes,
+  `CLIENT-ERROR [build …] message` whenever a player's browser hits a script error, `REPORT` / `ADMIN` lines for
+  moderation, and `UNCAUGHT EXCEPTION` / `UNHANDLED REJECTION` if the server itself has a bug.
+- `/health` adds `tickMs {avg, max}` (how long one 100 ms server tick takes) and `maxPlayers`.
+- **Backups:** Neon's free plan only restores the last 6 hours, so there is a nightly encrypted export, plus
+  `tools/export.mjs` / `tools/import.mjs`. Setup and restore steps: [docs/BACKUP.md](docs/BACKUP.md).
