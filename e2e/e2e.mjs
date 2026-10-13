@@ -62,6 +62,19 @@ ok((await A.evaluate(() => document.querySelectorAll('.fly').length)) >= 1, 'a "
 await wait(350);
 ok((await woodOf(A)) === 1, 'server granted 1 wood');
 
+// minimap: tap to open big, tap again to close, Esc closes too
+const mmSize = () => A.evaluate(() => { const r = document.getElementById('mm').getBoundingClientRect(); return Math.round(r.width); });
+const smallMap = await mmSize();
+await A.click('#mm'); await wait(300);
+const bigMap = await mmSize();
+ok(bigMap > smallMap * 2.5 && (await A.evaluate(() => document.getElementById('mm').width)) > 96, 'tapping the minimap opens it big (' + smallMap + ' -> ' + bigMap + ' px)');
+await A.screenshot({ path: out + '/map-big.png' });
+await A.keyboard.press('Escape'); await wait(200);
+ok((await mmSize()) === smallMap, 'Esc closes the big map');
+await A.click('#mm'); await wait(200);
+await A.mouse.click(5, 5); await wait(200);
+ok((await mmSize()) === smallMap, 'tapping the backdrop closes the big map');
+
 // chat
 await A.keyboard.press('Enter');
 await A.keyboard.type('hello from the browser <b>x</b>');

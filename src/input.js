@@ -28,6 +28,7 @@ export function initInput(canvas, cb) {
     if (e.code === 'KeyE' && !e.repeat) cb.interact();
     if (e.code === 'KeyI' && !e.repeat) cb.toggleInv();
     if (e.code === 'KeyC' && !e.repeat) cb.craft();
+    if (e.code === 'KeyM' && !e.repeat) cb.map();
     if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !e.repeat) { e.preventDefault(); cb.chat(); }
     if (e.code === 'Escape') cb.escape();
   });
