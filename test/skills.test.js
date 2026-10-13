@@ -221,6 +221,12 @@ test('cast time: mana is spent when the cast ends, moving cancels it, and you ca
   assert.ok(p.last('scancel'));
   assert.equal(p.mana > 99, true);
   assert.match(p.last('fail').m, /interrupted/);
+  // the page can cancel by itself (it does when you move the stick)
+  now.advance(5000);
+  room.handle(p, { t: 'skill', k: 'e', r: 0 });
+  assert.ok(p.spell);
+  room.handle(p, { t: 'scancel' });
+  assert.equal(p.spell, null);
   // swapping gear interrupts too
   now.advance(5000);
   room.handle(p, { t: 'skill', k: 'e', r: 0 });

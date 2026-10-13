@@ -152,3 +152,19 @@ test('a ban is saved with the account', async () => {
     assert.equal(env.gs.store.setBan('Nobody', { reason: 'x' }), false);
   } finally { await env.gs.stop(); }
 });
+
+test('/give: admins can put an item in their own bag, other players cannot', async () => {
+  const env = await boot();
+  try {
+    const boss = await join(env, { mode: 'register', name: 'Boss1', pass: 'pw-123456' });
+    const guest = await join(env, { mode: 'guest' });
+    guest.c.send({ t: 'chat', m: '/give sword' });
+    assert.ok(await guest.c.until((m) => m.t === 'fail' && /Unknown command/.test(m.m)));
+    boss.c.send({ t: 'chat', m: '/give nonsense' });
+    assert.ok(await boss.c.until((m) => m.t === 'fail' && /Usage: \/give/.test(m.m)));
+    boss.c.send({ t: 'chat', m: '/give plank 5' });
+    const inv = await boss.c.until((m) => m.t === 'inv' && m.inv.slots.some((s) => s && s.id === 'plank' && s.n === 5));
+    assert.ok(inv);
+    [boss, guest].forEach((x) => x.c.ws.terminate());
+  } finally { await env.gs.stop(); }
+});

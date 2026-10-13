@@ -142,6 +142,7 @@ export class Room {
       case 'chat': return this.onChat(p, m);
       case 'skill': return this.onSkill(p, m);
       case 'use': return this.onUse(p, m);
+      case 'scancel': return this.cancelSpell(p);
       default: return undefined;
     }
   }

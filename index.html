@@ -16,20 +16,20 @@
 <script type="importmap">
 {
  "imports": {
-  "./src/audio.js": "./src/audio.js?v=a65ebe78",
+  "./src/audio.js": "./src/audio.js?v=bc9f0a49",
   "./src/auth.js": "./src/auth.js?v=bc34a216",
   "./src/boot.js": "./src/boot.js?v=f17fefc2",
   "./src/bootscreen.js": "./src/bootscreen.js?v=0d810476",
   "./src/chat.js": "./src/chat.js?v=bd11b820",
-  "./src/combat.js": "./src/combat.js?v=f7303ef6",
+  "./src/combat.js": "./src/combat.js?v=8ce1398c",
   "./src/config.js": "./src/config.js?v=f4a203e4",
   "./src/courtyard.js": "./src/courtyard.js?v=b5eae813",
   "./src/figures.js": "./src/figures.js?v=fc3de02a",
   "./src/fx.js": "./src/fx.js?v=694afb83",
-  "./src/input.js": "./src/input.js?v=467e52fc",
+  "./src/input.js": "./src/input.js?v=eadbf705",
   "./src/interact.js": "./src/interact.js?v=16ced734",
-  "./src/inventory.js": "./src/inventory.js?v=2b7e83a9",
-  "./src/main.js": "./src/main.js?v=eca10191",
+  "./src/inventory.js": "./src/inventory.js?v=b2a188af",
+  "./src/main.js": "./src/main.js?v=a8ee14fd",
   "./src/minimap.js": "./src/minimap.js?v=d4b24c56",
   "./src/mount.js": "./src/mount.js?v=e29acfa6",
   "./src/net.js": "./src/net.js?v=7aab9f0d",
@@ -39,7 +39,8 @@
   "./src/rabbits.js": "./src/rabbits.js?v=1f31a666",
   "./src/scene.js": "./src/scene.js?v=53974aaa",
   "./src/settings.js": "./src/settings.js?v=bfe2640a",
-  "./src/state.js": "./src/state.js?v=5cbb637e",
+  "./src/skills.js": "./src/skills.js?v=815577bb",
+  "./src/state.js": "./src/state.js?v=9e88ab0f",
   "./src/telemetry.js": "./src/telemetry.js?v=bf1e1cdd",
   "./src/terrain.js": "./src/terrain.js?v=9538d355",
   "./src/town.js": "./src/town.js?v=862b4290",
@@ -55,7 +56,7 @@
 }
 </script>
 <!-- importmap:end -->
-<link rel="stylesheet" href="css/style.css?v=4fd97a90">
+<link rel="stylesheet" href="css/style.css?v=978fc99d">
 </head>
 <body>
 <div id="cap">Night World Online — World 1</div>
@@ -63,6 +64,8 @@
 <div id="hplabel">HP 1200 / 1200</div>
 <div id="mpwrap"><div id="mpfill"></div></div>
 <div id="mplabel"></div>
+<div id="manawrap"><div id="manafill"></div></div>
+<div id="manalabel"></div>
 <div id="hud"></div>
 <div id="who"></div>
 <div id="chatlog"></div>
@@ -80,6 +83,9 @@
 <button id="mount" type="button">Mount</button>
 <button id="atk" type="button">Attack</button>
 <button id="use" type="button">Use</button>
+<div id="skills"></div>
+<div id="cons"></div>
+<div id="buffs"></div>
 <div id="castlabel"></div>
 <div id="cast"><div id="castfill"></div></div>
 <div id="panel"></div>

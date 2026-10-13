@@ -18,6 +18,7 @@ import { initPanel, panelState, openNearestStation, closePanel, renderPanel } fr
 import { initMount, updateMountButton, applyMountState, updateDonkey } from './mount.js';
 import { initInteract, checkNear, doInteract, onCast, onFail, cancelGather, updateGather } from './interact.js';
 import { initCombat, tryAttack, bindFigure } from './combat.js';
+import { initSkills, refreshSkills, useSkill, useConsumable, updateSkills, onMana, onCd, onBuffs, onScast, onScancel, onSkillFx, hideSpell, cancelSpellByMoving } from './skills.js';
 import { initChat, addChat, openChat, closeChat, isTyping } from './chat.js';
 import { drawMap, isMapBig, setMapBig, toggleMap } from './minimap.js';
 import { input, initInput } from './input.js';
@@ -36,6 +37,7 @@ initPanel();
 initMount();
 initInteract();
 initCombat();
+initSkills();
 initChat();
 initAuth();
 initSettings();
@@ -50,6 +52,8 @@ initInput(renderer.domElement, {
   toggleInv,
   craft: openNearestStation,
   map: toggleMap,
+  skill: useSkill,
+  use: useConsumable,
   chat: openChat,
   escape: () => { if (isMapBig()) setMapBig(false); else if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
 });
@@ -63,6 +67,9 @@ on('welcome', (m) => {
   P.x = y.x; P.z = y.z; P.r = y.r;
   S.inv = y.inv;
   Object.assign(S.st, y.st, { hp: y.hp, maxHp: y.mh });
+  if (y.mana) onMana(y.mana);
+  S.cd = {}; S.gcdUntil = 0; hideSpell();
+  onBuffs(y.buffs || {});
   applyMountState(y.mt, y.dk, y.dh, y.dr);
   resetNodes(m.depleted);
   clearRabbits();
@@ -73,6 +80,7 @@ on('welcome', (m) => {
   cf.snap = true;
   sent.x = NaN;
   renderInv();
+  refreshSkills();
   updateMountButton();
   updateHPUI();
   updateHud();
@@ -115,11 +123,20 @@ on('inv', (m) => {
   Object.assign(S.st, m.st);
   if (typeof m.hp === 'number') S.st.hp = m.hp;
   renderInv();
+  refreshSkills();
   updateMountButton();
   updateHPUI();
   updateHud();
   if (panelState.type) renderPanel();
 });
+on('st', (m) => { Object.assign(S.st, m.st); updateHPUI(); updateHud(); });
+on('mana', onMana);
+on('cd', onCd);
+on('buffs', onBuffs);
+on('scast', onScast);
+on('scancel', onScancel);
+on('heal', (m) => floatText(P.x, P.y + 2.4, P.z, '+' + m.d, 'heal'));
+on('skfx', (m) => onSkillFx(m, (id) => (id === S.myId ? { x: P.x, y: P.y, z: P.z } : S.others[id] ? S.others[id].g.position : null)));
 on('node', (m) => setNodeQty(m.id, m.qty));
 on('toast', (m) => say(m.m));
 on('fail', (m) => { say(m.m); sfx('error'); onFail(); });
@@ -148,6 +165,7 @@ on('chat', (m) => addChat(m.n, m.m));
 on('kick', (m) => { stop(); showBoot(m.m, 'Reload the page to play here again.', { tips: false, game: false }); });
 on('close', () => {
   cancelGather(false);
+  hideSpell();
   clearPlayers();
   clearRabbits();
 });
@@ -176,6 +194,7 @@ function loop() {
   if (!S.ready) { ix = 0; iz = 0; }
   const moving = Math.abs(ix) > 0.05 || Math.abs(iz) > 0.05;
   if (S.gather.active && moving) cancelGather();
+  if (S.spell && moving) cancelSpellByMoving();
   updateGather(now);
 
   const yaw = input.yaw, pitch = input.pitch;
@@ -186,7 +205,7 @@ function loop() {
   if (l > 0.05 && !S.gather.active) {
     if (l > 1) { mx /= l; mz /= l; }
     // two speeds: walking (6/s) and the donkey (10/s). There is no sprint.
-    const sp = S.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED;
+    const sp = S.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED * (1 + (S.st.speed || 0)); // boots: +40% on foot
     tvx = mx * sp; tvz = mz * sp;
     aim = Math.atan2(mx, mz);
   }
@@ -217,6 +236,7 @@ function loop() {
 
   fr++;
   if (fr % (isMapBig() ? 12 : 6) === 0) drawMap();
+  updateSkills(now);
 
   P.y = Math.max(0.13, hgt(P.x, P.z));
   me.position.set(P.x, P.y + (S.mounted ? 0.55 : 0), P.z);
