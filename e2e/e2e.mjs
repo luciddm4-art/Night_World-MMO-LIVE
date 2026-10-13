@@ -69,6 +69,12 @@ await A.keyboard.press('Enter');
 await wait(400);
 const chatHtml = await A.innerHTML('#chatlog');
 ok(chatHtml.includes('hello from the browser') && !chatHtml.includes('<b>x</b>'), 'chat shown, HTML escaped');
+await A.keyboard.press('Enter'); await A.keyboard.type('/help'); await A.keyboard.press('Enter'); await wait(500);
+ok(/\/report/.test(await A.textContent('#toasts')), 'slash commands work from the chat box (/help)');
+const rude = String.fromCharCode(...'shpx'.split('').map((c) => ((c.charCodeAt(0) - 97 + 13) % 26) + 97));
+await A.keyboard.press('Enter'); await A.keyboard.type('well ' + rude + ' that'); await A.keyboard.press('Enter'); await wait(500);
+const chatHtml2 = await A.innerHTML('#chatlog');
+ok(chatHtml2.includes('well **** that') && !chatHtml2.includes(rude), 'bad words are hidden in the chat');
 
 // second player sees us
 const B = await newPage();

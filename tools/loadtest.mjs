@@ -2,6 +2,7 @@
 // gather and chat. Reports bandwidth, latency, server CPU and tick time, and estimates how many players a free
 // Render instance (about 0.1 CPU) could carry.
 //
+//   WS_DEFLATE=0 node tools/loadtest.mjs         the same without message compression
 //   node tools/loadtest.mjs                      40 players for 20 s in one world, all starting in town
 //   node tools/loadtest.mjs --players 80 --seconds 30 --worlds 2 --spread
 //
@@ -15,6 +16,7 @@ import WebSocket from 'ws';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i > 0 && process.argv[i + 1] !== undefined && !process.argv[i + 1].startsWith('--') ? Number(process.argv[i + 1]) : d; };
 const N = arg('players', 40), SECS = arg('seconds', 20), WORLDS = arg('worlds', 1), SPREAD = process.argv.includes('--spread');
+const BUDGET_GB = arg('budget-gb', 5); // monthly outbound bandwidth you have (Render's Hobby workspace: 5 GB, check your Billing page)
 const THROTTLE = arg('throttle', 0); // e.g. 0.1 = squeeze the server into 10 % of a core, like Render's free tier (it runs ~10 ms, then is paused ~90 ms)
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 20000 + Math.floor(Math.random() * 20000);
@@ -23,7 +25,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const child = spawn(process.execPath, ['server.js'], {
   cwd: ROOT,
-  env: { ...process.env, WS_DEFLATE: process.env.WS_DEFLATE || '', PORT: String(PORT), DATABASE_URL: '', DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'nwo-load-')), KEEPALIVE: 'off', MAX_PLAYERS: String(N + 10), RENDER_EXTERNAL_URL: '', NODE_ENV: 'production' },
+  env: { ...process.env, WS_DEFLATE: process.env.WS_DEFLATE ?? '1', PORT: String(PORT), DATABASE_URL: '', DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'nwo-load-')), KEEPALIVE: 'off', MAX_PLAYERS: String(N + 10), RENDER_EXTERNAL_URL: '', NODE_ENV: 'production' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let serverLog = '';
@@ -111,8 +113,8 @@ console.log(THROTTLE ? `(server squeezed into ${(THROTTLE * 100).toFixed(0)} % o
 console.log(`players connected      : ${stats.joined}  (dropped during test: ${stats.closed})`);
 console.log(`server tick            : avg ${health.tickMs.avg} ms, worst ${health.tickMs.max} ms   (budget 100 ms)`);
 console.log(`latency (ping RTT)     : p50 ${q(0.5).toFixed(0)} ms, p95 ${q(0.95).toFixed(0)} ms, max ${q(1).toFixed(0)} ms`);
-console.log(`download per player    : ${kbpsEach.toFixed(1)} KB/s on the wire   (server total ${(kbpsEach * stats.joined * 8).toFixed(0)} kbit/s)${process.env.WS_DEFLATE === '1' ? '  [compression ON]' : ''}`);
-console.log(`  = ${(kbpsEach * 3600 / 1024).toFixed(0)} MB per player-hour; a 100 GB/month allowance lasts ~${Math.round(100 * 1024 / (kbpsEach * 3600 / 1024))} player-hours`);
+console.log(`download per player    : ${kbpsEach.toFixed(1)} KB/s on the wire   (server total ${(kbpsEach * stats.joined * 8).toFixed(0)} kbit/s)${process.env.WS_DEFLATE === '0' ? '  [compression OFF]' : '  [compression on]'}`);
+console.log(`  = ${(kbpsEach * 3600 / 1024).toFixed(0)} MB per player-hour; a ${BUDGET_GB} GB/month allowance lasts ~${Math.round(BUDGET_GB * 1024 / (kbpsEach * 3600 / 1024))} player-hours (~${Math.round(BUDGET_GB * 1024 / (kbpsEach * 3600 / 1024) / 30)} per day)`);
 if (cpuFrac !== null) {
   console.log(`server CPU             : ${(cpuFrac * 100).toFixed(1)} % of one core here, memory ${rss ? rss.toFixed(0) : '?'} MB`);
   const per = cpuFrac / Math.max(1, stats.joined);
