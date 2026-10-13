@@ -196,7 +196,7 @@ test('movement: legitimate sprinting is never corrected', () => {
   const run = openRun();
   const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
   let x = run.x0;
-  for (let i = 0; i < 100; i++) { // 7 seconds at full sprint, packets every 70 ms
+  for (let i = 0; i < 100; i++) { // 7 seconds at full walking speed, packets every 70 ms
     now.advance(70);
     x += CFG.WALK_SPEED * 0.07;
     room.handle(p, { t: 'p', x, z: run.z, r: 1 });
@@ -762,21 +762,21 @@ test('donkey reward: needs head, chest, foot, main and off hand (5 slots)', () =
 
 
 // ---------------------------------------------------------------- walking speed and the donkey
-test('speed: walking is 3 units/s - running faster is corrected', () => {
+test('speed: walking is 6 units/s - running faster is corrected', () => {
   const { room, now } = makeRoom();
   const run = openRun();
   const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
   let x = run.x0;
-  for (let i = 0; i < 100; i++) { // 7 seconds at 7 units/s
+  for (let i = 0; i < 100; i++) { // 7 seconds at 12 units/s
     now.advance(70);
-    x += 7 * 0.07;
+    x += 12 * 0.07;
     room.handle(p, { t: 'p', x, z: run.z, r: 1 });
   }
   assert.ok(p.last('pos'), 'corrected');
-  assert.ok(p.x - run.x0 < 3 * 1.15 * 8.5 + 1, 'moved only ' + (p.x - run.x0).toFixed(1));
+  assert.ok(p.x - run.x0 < 6 * 1.15 * 8.5 + 1, 'moved only ' + (p.x - run.x0).toFixed(1));
 });
 
-test('speed: riding the donkey doubles the limit (6 units/s) and is never corrected', () => {
+test('speed: riding the donkey is 10 units/s and is never corrected', () => {
   const { room, now } = makeRoom();
   const run = openRun();
   const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
@@ -785,7 +785,7 @@ test('speed: riding the donkey doubles the limit (6 units/s) and is never correc
   let x = run.x0;
   for (let i = 0; i < 100; i++) {
     now.advance(70);
-    x += 6 * 0.07;
+    x += CFG.RIDE_SPEED * 0.07;
     room.handle(p, { t: 'p', x, z: run.z, r: 1 });
   }
   assert.equal(p.last('pos'), undefined);

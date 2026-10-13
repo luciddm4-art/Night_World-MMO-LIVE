@@ -84,10 +84,10 @@ export function setHeld(g, wid) {
   u.held = h;
 }
 
-const ANIM_SCALE = 0.65;
+const ANIM_SCALE = 0.5;
 export function animFig(g, dt, speed, now) {
   const u = g.userData;
-  const walkAmt = Math.min(1, speed / 3.5); // walking is 3 units/s
+  const walkAmt = Math.min(1, speed / 6); // walking is 6 units/s
   u.phase += dt * (2 + speed * 1.6) * ANIM_SCALE;
   const s = Math.sin(u.phase), t = now * 0.001;
   u.legL.rotation.x = s * 0.85 * walkAmt;

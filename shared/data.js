@@ -17,8 +17,8 @@ export const CFG = {
   PLAYER_BASE_HP: 1200,
   PLAYER_BASE_DMG: 30,
   PLAYER_BASE_ATK_MS: 400,
-  WALK_SPEED: 3, // units / second. There is no sprint.
-  MOUNT_SPEED: 2, // the donkey doubles your speed (x2 = 6 units / second)
+  WALK_SPEED: 6, // units / second on foot. There is no sprint.
+  RIDE_SPEED: 10, // units / second on the donkey
   MOUNT_CAST_MS: 5000, // summoning the donkey takes a 5 second cast
   MOUNT_HP: 200, // rabbit bites hit the donkey instead of you while you ride
   MOUNT_RECALL_MS: 30000, // after the donkey drops to 0 HP it is gone this long
@@ -146,7 +146,7 @@ export const STATIONS = [
 export const STATION_Z = -4.6;
 export const STATION_RANGE = 2.4;
 // The Big Town: a walled 120 x 120 square centred on the Crafting Hall, with a gate in the middle
-// of each side. The portal is far away to the south (about 8 minutes on a donkey, 16 on foot).
+// of each side. The portal is far away to the south (about 8 minutes on a donkey at 10 units/s, 13 on foot at 6).
 export const TOWN = {
   half: 60, // wall centre line: |x| or |z| = 60
   gate: 7, // gates are 14 wide
@@ -160,7 +160,7 @@ export const HOUSES = [
   { x: -40, z: 40, w: 12, d: 10 }, { x: -22, z: 46, w: 10, d: 8 }, { x: -48, z: 22, w: 8, d: 10 },
   { x: 40, z: 40, w: 12, d: 10 }, { x: 22, z: 46, w: 10, d: 8 }, { x: 48, z: 22, w: 8, d: 10 },
 ];
-export const PORTAL = { x: 0, z: 2900, r: 2.6 };
+export const PORTAL = { x: 0, z: 4820, r: 2.6 };
 export const PORTAL_SAFE = 40; // no trees or rabbits within this distance of the portal
 export const SPAWN = { x: 0, z: 22, spread: 6 }; // the plaza, just outside the Hall's south door
 

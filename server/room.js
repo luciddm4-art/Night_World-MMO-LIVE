@@ -129,7 +129,7 @@ export class Room {
     // no matter how many (or how few) position packets you send.
     const dtS = Math.max(0, (now - p.lastPosT) / 1000);
     p.lastPosT = now;
-    const vmax = CFG.WALK_SPEED * (p.mounted ? CFG.MOUNT_SPEED : 1) * 1.15;
+    const vmax = (p.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED) * 1.15;
     p.moveBudget = Math.min(vmax * 1.5, p.moveBudget + vmax * dtS);
     const d = dist(x, z, p.x, p.z);
     let nx = x, nz = z;
