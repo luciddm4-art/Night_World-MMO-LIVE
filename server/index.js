@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS } from '../shared/data.js';
 import { Room } from './room.js';
 import { Player } from './player.js';
 import { Store, PgBackend, hashPassword, verifyPassword } from './store.js';
@@ -20,6 +20,15 @@ const AUTOSAVE_MS = 30000;
 const HEARTBEAT_MS = 30000;
 const ROOM_IDLE_MS = 5 * 60 * 1000;
 
+// Which world seeds may be opened. A public server must not let anyone open arbitrary worlds (each one costs memory
+// and ticks). WORLD_SEEDS="7,8,9" overrides; unset = the defaults below. createGameServer's own default is "any seed"
+// (tests), start() applies these.
+export const DEFAULT_WORLD_SEEDS = [7, ...WORLDS.map((w) => w.seed)]; // the start world + every world the Travel Planner offers
+export function parseSeeds(env) {
+  const list = (env || '').split(',').map((s) => s.trim()).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
+  return list.length ? list.map(normalizeSeed) : DEFAULT_WORLD_SEEDS;
+}
+
 function parseOrigins(env) {
   const extra = (env || '').split(',').map((s) => s.trim()).filter(Boolean);
   return [...DEFAULT_ORIGINS, ...extra];
@@ -33,6 +42,9 @@ export function createGameServer(opts = {}) {
     allowedOrigins: opts.allowedOrigins ?? parseOrigins(process.env.ALLOWED_ORIGINS),
     maxPlayersPerRoom: opts.maxPlayersPerRoom ?? 40,
     maxRooms: opts.maxRooms ?? 16,
+    allowedSeeds: opts.allowedSeeds ? new Set(opts.allowedSeeds.map(normalizeSeed)) : null, // null = any seed
+    maxPlayers: opts.maxPlayers ?? Infinity, // whole server, all worlds
+    maxConnsPerIp: opts.maxConnsPerIp ?? 12, // sockets at once from one network (phones on mobile data share addresses)
     now: opts.now ?? Date.now,
     tickMs: opts.tickMs ?? TICK_MS,
     log: opts.log ?? (() => {}),
@@ -47,6 +59,8 @@ export function createGameServer(opts = {}) {
   const online = new Map(); // account key -> {player, room, ws}
   const failedLogins = new Map(); // ip -> [timestamps]
   const registrations = new Map(); // ip -> [timestamps]
+  const connsByIp = new Map(); // ip -> open sockets
+  const totalPlayers = () => [...rooms.values()].reduce((n, r) => n + r.players.size, 0);
   const startedAt = cfg.now();
   let nextId = 1;
   let guestN = 1;
@@ -58,7 +72,8 @@ export function createGameServer(opts = {}) {
     if (url === '/health') {
       const body = JSON.stringify({
         ok: true,
-        players: [...rooms.values()].reduce((n, r) => n + r.players.size, 0),
+        players: totalPlayers(),
+        maxPlayers: Number.isFinite(cfg.maxPlayers) ? cfg.maxPlayers : null,
         rooms: rooms.size,
         uptime: Math.round((cfg.now() - startedAt) / 1000),
         storage: store.kind, // 'postgres' | 'file' | 'memory' (file/memory = progress is lost on redeploy)
@@ -143,6 +158,7 @@ export function createGameServer(opts = {}) {
     ws.authBusy = true;
     try {
       const seed = normalizeSeed(m.seed ?? 7);
+      if (cfg.allowedSeeds && !cfg.allowedSeeds.has(seed)) return authErr(ws, 'That world does not exist.');
       let acct = null, name, token = null;
 
       if (m.mode === 'guest') {
@@ -184,6 +200,7 @@ export function createGameServer(opts = {}) {
 
       if (ws.readyState !== 1) return; // left while we were hashing
 
+      if (totalPlayers() >= cfg.maxPlayers) return authErr(ws, 'The server is full right now. Please try again in a few minutes.');
       const room = getRoom(seed);
       if (!room) return authErr(ws, 'All worlds are busy right now. Try an existing world.');
       if (room.players.size >= cfg.maxPlayersPerRoom) return authErr(ws, 'This world is full (' + cfg.maxPlayersPerRoom + ' players)');
@@ -226,6 +243,10 @@ export function createGameServer(opts = {}) {
 
   wss.on('connection', (ws, req) => {
     const ip = clientIp(req);
+    const open = (connsByIp.get(ip) || 0) + 1;
+    if (open > cfg.maxConnsPerIp) { ws.close(1013, 'Too many connections from your network'); return; }
+    connsByIp.set(ip, open);
+    ws.once('close', () => { const n = (connsByIp.get(ip) || 1) - 1; if (n > 0) connsByIp.set(ip, n); else connsByIp.delete(ip); });
     ws.isAlive = true;
     ws.entry = null;
     ws.bucket = { tokens: 80, t: cfg.now(), drops: 0, dropT: cfg.now() };
@@ -313,7 +334,9 @@ export function createGameServer(opts = {}) {
 }
 
 export async function start() {
-  const gs = createGameServer({ log: (...a) => console.log('[nwo]', ...a) });
+  const maxPlayers = Number(process.env.MAX_PLAYERS) > 0 ? Number(process.env.MAX_PLAYERS) : 120;
+  const gs = createGameServer({ log: (...a) => console.log('[nwo]', ...a), allowedSeeds: parseSeeds(process.env.WORLD_SEEDS), maxPlayers });
+  console.log('[nwo] worlds: ' + [...gs.cfg.allowedSeeds].join(',') + ' · max players: ' + maxPlayers);
   const port = await gs.listen();
   console.log('Night World server on port ' + port + ' (storage: ' + gs.store.kind + (gs.store.kind === 'file' ? ', dir: ' + gs.cfg.dataDir + ' — NOT persistent on free hosting; set DATABASE_URL' : '') + ')');
   const kaUrl = keepAliveUrl();

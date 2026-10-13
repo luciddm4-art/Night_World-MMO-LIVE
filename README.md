@@ -181,3 +181,18 @@ worker) and `src/pwa.js` (registers the worker and shows the install button on t
   fight, chat, reconnect, module loading. Screenshots are attached to the run if it fails. Run it yourself with
   `npm i --no-save playwright && npx playwright install chromium && node e2e/e2e.mjs`.
 - **Dependabot** opens a weekly PR for outdated npm packages and GitHub Actions.
+
+## Abuse protection (server limits)
+
+| Limit | Default | Setting |
+|---|---|---|
+| Worlds that can be opened | the start world (7) + the four Travel Planner worlds (42, 100, 999, 2025) | `WORLD_SEEDS=7,42` |
+| Players on the whole server | 120 | `MAX_PLAYERS=200` |
+| Players per world | 40 | |
+| Sockets at once from one network | 12 | |
+| Messages per second per socket | ~50 sustained (bursts of 80) | |
+| Message size | 4 KB | |
+| New accounts per network | 5 per hour | |
+| Failed logins per network | 8 per 10 minutes | |
+
+`test/abuse.test.js` throws thousands of garbage messages at a player and the server on every run.
