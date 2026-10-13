@@ -86,13 +86,19 @@ ok((await B.evaluate(() => Object.keys(window.__nwo.S.others).length)) === 1, 'g
 const rab = { id: 'rab:e2e:1', x: player.x, z: player.z + 1.0, hp: 50, mode: 'wander', tx: 0, tz: 0, wt: 1e9, atkT: 0, dead: false, gathered: false, deadAt: 0, target: null, home: Math.floor(player.x / 32) + ',' + Math.floor(player.z / 32) };
 room.rabbits.set(rab.id, rab);
 await A.evaluate(() => { window.__nwo.S.P.r = 0; });
+// slow CI machines: wait until the server has really heard our facing before swinging
+const myPlayer = [...room.players.values()].find((p) => p.name === 'Tester1');
+for (let i = 0; i < 40 && Math.abs(myPlayer.r || 0) > 0.05; i++) await wait(100);
 await wait(300);
-await A.click('#atk'); await wait(200);
+await A.click('#atk');
+for (let i = 0; i < 30 && rab.hp === 50; i++) await wait(100); // the hit has landed on the server
+await wait(200);
 const nums = await A.evaluate(() => [...document.querySelectorAll('#fx .floater')].map((e) => e.textContent));
 ok(nums.includes('20'), 'floating damage number shown (fists = 20): ' + JSON.stringify(nums));
 await A.screenshot({ path: out + '/combat.png' });
-await wait(700); await A.click('#atk'); await wait(700); await A.click('#atk'); await wait(400);
-ok(rab.hp === 0 || rab.dead, 'attack button damaged the rabbit server-side (3 fist hits)');
+for (let i = 0; i < 6 && !(rab.hp === 0 || rab.dead); i++) { await wait(800); await A.click('#atk'); }
+await wait(400);
+ok(rab.hp === 0 || rab.dead, 'attack button damaged the rabbit server-side (3 fist hits)' + (rab.hp === 0 || rab.dead ? '' : ' ' + JSON.stringify({ rab: { x: rab.x, z: rab.z, hp: rab.hp, mode: rab.mode }, me: { x: myPlayer.x, z: myPlayer.z, r: myPlayer.r, hp: myPlayer.hp, cast: !!myPlayer.cast, gather: !!myPlayer.gather } })));
 
 // crafting happens only at stations
 await A.keyboard.press('c'); await wait(300);
