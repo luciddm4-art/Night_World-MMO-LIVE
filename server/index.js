@@ -10,6 +10,7 @@ import { Room } from './room.js';
 import { Player } from './player.js';
 import { Store, PgBackend, hashPassword, verifyPassword } from './store.js';
 import { createStaticHandler } from './static.js';
+import { keepAliveUrl, startKeepAlive } from './keepalive.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -314,6 +315,12 @@ export async function start() {
   const gs = createGameServer({ log: (...a) => console.log('[nwo]', ...a) });
   const port = await gs.listen();
   console.log('Night World server on port ' + port + ' (storage: ' + gs.store.kind + (gs.store.kind === 'file' ? ', dir: ' + gs.cfg.dataDir + ' — NOT persistent on free hosting; set DATABASE_URL' : '') + ')');
+  const kaUrl = keepAliveUrl();
+  if (kaUrl) {
+    const ka = startKeepAlive({ url: kaUrl, log: (m) => console.log('[nwo]', m) });
+    gs.server.on('close', () => ka.stop());
+    console.log('[nwo] keep-alive: pinging ' + kaUrl + ' every 4 min');
+  } else console.log('[nwo] keep-alive: off (no RENDER_EXTERNAL_URL / KEEPALIVE_URL)');
   const shutdown = async (sig) => {
     console.log('[nwo] ' + sig + ' received, saving…');
     await gs.stop();

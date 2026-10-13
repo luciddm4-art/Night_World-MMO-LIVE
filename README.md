@@ -60,6 +60,16 @@ Environment variables:
 | `DATA_DIR` | `./data` | where `accounts.json` is written when there is no database (**gitignored**); also the fallback if the database is unreachable |
 | `ALLOWED_ORIGINS` | GitHub Pages site | extra comma-separated origins allowed to open a WebSocket (`*` = any). Same-origin and `localhost` are always allowed. |
 
+### Staying awake on Render's free plan
+
+Free web services sleep after ~15 minutes with no incoming requests (the next visitor then waits 30-60 s). Three layers keep it up:
+
+1. **Self-ping (built in, `server/keepalive.js`)**: while the server runs it requests its own public `/health` every 4 minutes. Render sets `RENDER_EXTERNAL_URL` itself, so nothing to configure. Set `KEEPALIVE=off` to disable, or `KEEPALIVE_URL` to ping another address.
+2. **GitHub Action (`.github/workflows/keepalive.yml`)**: pings every 5 minutes from outside, which also *wakes* the server if it did go to sleep. GitHub schedules are best-effort and pause after 60 days without repo activity.
+3. **Optional external pinger**: a free monitor such as UptimeRobot or cron-job.org hitting `https://night-world-mmo-live.onrender.com/health` every 5 minutes is the most dependable backup.
+
+Free instances get 750 hours per month per account: one always-on service (about 744 h) fits, a second always-on free service would not. For a truly always-on server with no cold starts, use Render's paid Starter plan.
+
 ## How it works
 
 ```
