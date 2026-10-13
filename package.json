@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/",
-    "stamp": "node tools/stamp.mjs"
+    "stamp": "node tools/stamp.mjs",
+    "loadtest": "node tools/loadtest.mjs"
   },
   "engines": {
     "node": ">=18"
