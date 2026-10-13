@@ -20,6 +20,16 @@ Everything players own (accounts, characters, inventories, bans) lives in one Po
 4. **Actions** tab → **Nightly backup** → **Run workflow** to test it. A green run with an artifact called
    `nwo-backup-encrypted` means it works. After that it runs by itself every night.
 
+## If the nightly run is red
+
+- **`getaddrinfo EAI_AGAIN base`**: the `DATABASE_URL` secret isn't a clean connection string. It must be only the
+  `postgresql://…` address. (The tools now cut away `psql '…'`, quotes and `DATABASE_URL=` automatically, but a value that
+  has no `postgresql://` in it at all, or that shows `***` instead of the password, can't work.) Fix: Settings → Secrets and
+  variables → Actions → tap the pencil next to `DATABASE_URL` → paste again → **Update secret** → re-run the workflow.
+- **`password authentication failed`**: the password in the string is wrong or masked. In Neon use **Connect** and tick
+  **Show password** before copying.
+- **Skipped: add the DATABASE_URL and BACKUP_PASSPHRASE secrets**: one of the two secrets is missing or has the wrong name.
+
 ## Restore option 1 — something broke in the last 6 hours (Neon)
 
 1. console.neon.tech → your project → **Backup & Restore** (labelled "Instant restore" on some screens).
