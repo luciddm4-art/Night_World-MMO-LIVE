@@ -1,6 +1,15 @@
 // Export / import of all accounts (characters, inventories, bans) as one JSON file.
 // Works with anything that has query(text, params) -> {rows}: a `pg` Pool in production, PGlite in tests.
 // The file contains password HASHES, so treat it like a password: never commit it, never post it.
+// People paste the connection string with extras: `psql 'postgresql://...'`, `DATABASE_URL=postgresql://...`, quotes,
+// spaces or a newline. `pg` then silently treats the whole thing as a database NAME on a host called "base".
+// Pull out just the postgresql:// URL; null if there isn't one.
+export function cleanDatabaseUrl(raw) {
+  const m = /postgres(?:ql)?:\/\/[^\s'"`]+/.exec(String(raw ?? ''));
+  return m ? m[0] : null;
+}
+export const DB_URL_HELP = 'DATABASE_URL must be the full Neon connection string, starting with postgresql:// (no quotes, no "psql", no "DATABASE_URL=").';
+
 export const SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS nwo_accounts (
   key text PRIMARY KEY, doc jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())`;
 

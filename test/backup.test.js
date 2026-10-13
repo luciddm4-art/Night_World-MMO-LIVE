@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { PgBackend, Store } from '../server/store.js';
-import { exportAccounts, importAccounts, validateDump } from '../server/backup.js';
+import { exportAccounts, importAccounts, validateDump, cleanDatabaseUrl } from '../server/backup.js';
 
 async function liveStore() {
   const db = new PGlite();
@@ -53,4 +53,13 @@ test('a wrong or damaged file is refused before anything is written', async () =
   assert.throws(() => validateDump({ format: 'nwo-backup', version: 1, accounts: { bob: { name: 'bob', salt: 's' } } }), /damaged/);
   await assert.rejects(importAccounts(a.db, { format: 'nope' }), /not a Night World backup/);
   assert.equal((await exportAccounts(a.db)).count, 0);
+});
+
+test('a pasted connection string with extras still works (the "host base" mistake)', () => {
+  const url = 'postgresql://neondb_owner:pa%40ss@ep-cool-123-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+  for (const wrapped of [url, ` ${url}\n`, `"${url}"`, `'${url}'`, `psql '${url}'`, `DATABASE_URL=${url}`, `DATABASE_URL="${url}"`, `export DATABASE_URL='${url}'`]) {
+    assert.equal(cleanDatabaseUrl(wrapped), url, wrapped);
+  }
+  assert.equal(cleanDatabaseUrl('postgres://u:p@h/db'), 'postgres://u:p@h/db');
+  for (const bad of ['', undefined, null, 'ep-cool-123.neon.tech', 'neondb_owner:***@host/db', 'https://neon.tech']) assert.equal(cleanDatabaseUrl(bad), null, String(bad));
 });
