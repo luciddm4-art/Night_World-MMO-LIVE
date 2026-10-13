@@ -11,6 +11,7 @@
   "./src/audio.js": "./src/audio.js?v=a65ebe78",
   "./src/auth.js": "./src/auth.js?v=143bc658",
   "./src/boot.js": "./src/boot.js?v=5033c487",
+  "./src/bootscreen.js": "./src/bootscreen.js?v=0d810476",
   "./src/chat.js": "./src/chat.js?v=bd11b820",
   "./src/combat.js": "./src/combat.js?v=f7303ef6",
   "./src/config.js": "./src/config.js?v=f4a203e4",
@@ -20,10 +21,10 @@
   "./src/input.js": "./src/input.js?v=43d1aaf0",
   "./src/interact.js": "./src/interact.js?v=16ced734",
   "./src/inventory.js": "./src/inventory.js?v=2b7e83a9",
-  "./src/main.js": "./src/main.js?v=c0077d11",
+  "./src/main.js": "./src/main.js?v=f4e07d25",
   "./src/minimap.js": "./src/minimap.js?v=0214bc0b",
   "./src/mount.js": "./src/mount.js?v=e29acfa6",
-  "./src/net.js": "./src/net.js?v=d8cf29cc",
+  "./src/net.js": "./src/net.js?v=7aab9f0d",
   "./src/panel.js": "./src/panel.js?v=43992ee7",
   "./src/players.js": "./src/players.js?v=907fcbd5",
   "./src/rabbits.js": "./src/rabbits.js?v=07be6f6d",
@@ -32,7 +33,7 @@
   "./src/state.js": "./src/state.js?v=5cbb637e",
   "./src/terrain.js": "./src/terrain.js?v=9538d355",
   "./src/town.js": "./src/town.js?v=862b4290",
-  "./src/ui.js": "./src/ui.js?v=dcfa7515",
+  "./src/ui.js": "./src/ui.js?v=c19b134d",
   "./shared/collision.js": "./shared/collision.js?v=58b805b6",
   "./shared/data.js": "./shared/data.js?v=daa8301f",
   "./shared/inventory.js": "./shared/inventory.js?v=97115496",
@@ -41,7 +42,7 @@
 }
 </script>
 <!-- importmap:end -->
-<link rel="stylesheet" href="css/style.css?v=c9d4a688">
+<link rel="stylesheet" href="css/style.css?v=d5870bd7">
 </head>
 <body>
 <div id="cap">Night World Online — World 1</div>
@@ -74,7 +75,14 @@
 <div id="hurt"></div>
 <div id="hint">Stick/WASD move &middot; drag look &middot; Space attack &middot; E gather/craft &middot; I inventory &middot; C station &middot; Enter chat</div>
 <div id="err"></div>
-<div id="boot"><div class="card"><h2>Night World Online</h2><div class="spin"></div><p id="bootmsg">Connecting…</p><p class="sub" id="boothint"></p></div></div>
+<div id="boot" class="show"><canvas id="bootcv"></canvas><div class="vig"></div>
+  <div id="boottitle"><h1>NIGHT WORLD</h1><small>ONLINE</small></div>
+  <div id="bootpanel">
+    <div class="bar"><div id="bootbar"></div></div>
+    <div id="bootsteps"><span>Server</span><span>Connection</span><span>World</span></div>
+    <p id="bootmsg">Starting…</p><p class="sub" id="boothint"></p>
+    <p id="boottip"></p><p id="bootplay">&#10022; Tap the fireflies while you wait &#10022;</p><p id="bootscore"></p>
+  </div></div>
 <div id="auth"><form class="card" id="authform" autocomplete="on">
   <h2>Night World Online</h2>
   <p>Log in to keep your character, or jump in as a guest.</p>

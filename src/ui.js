@@ -1,9 +1,11 @@
 import { S } from './state.js';
+import { showBoot, hideBoot, setBootProgress } from './bootscreen.js';
+export { showBoot, hideBoot, setBootProgress };
 
 const $ = (id) => document.getElementById(id);
 export const el = {
   toasts: $('toasts'), hpfill: $('hpfill'), hplabel: $('hplabel'), hud: $('hud'), who: $('who'),
-  boot: $('boot'), banner: $('netbanner'), bootmsg: $('bootmsg'), boothint: $('boothint'), err: $('err'),
+  banner: $('netbanner'), err: $('err'),
 };
 
 // Stacked toasts: up to 4 lines, each fades on its own.
@@ -45,11 +47,3 @@ export function setPing(ms) {
 export function showBanner(msg) { el.banner.textContent = msg; el.banner.classList.add('show'); }
 export function hideBanner() { el.banner.classList.remove('show'); }
 
-export function showBoot(msg, hint = '') {
-  el.boot.classList.add('show');
-  el.bootmsg.textContent = msg;
-  el.boothint.textContent = hint;
-}
-export function hideBoot() {
-  el.boot.classList.remove('show');
-}

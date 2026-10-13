@@ -61,8 +61,39 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 #chatform.open{display:flex}
 #chatin{flex:1;min-width:0;padding:9px 10px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(11,14,26,.92);color:#fff;font:600 14px Georgia,serif;outline:none}
 #chatform button{padding:0 14px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(242,211,74,.2);color:#f2d34a;font:700 13px Georgia,serif}
-#boot,#auth{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;background:rgba(11,14,26,.92);font-family:Georgia,serif;color:#f2d34a;padding:16px;box-sizing:border-box}
-#boot.show,#auth.show{display:flex}
+#auth{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;background:rgba(11,14,26,.92);font-family:Georgia,serif;color:#f2d34a;padding:16px;box-sizing:border-box}
+#auth.show{display:flex}
+/* ---- loading screen (plain CSS, so it paints before any script runs) */
+#boot{position:fixed;inset:0;z-index:50;display:none;overflow:hidden;font-family:Georgia,serif;color:#f2d34a;transition:opacity .7s ease;touch-action:manipulation;user-select:none;-webkit-user-select:none;
+  background:linear-gradient(#070918 0%,#1a1640 55%,#34225a 62%,#0b1018 62.1%,#04070c 100%)}
+#boot.show{display:block}
+#boot.out{opacity:0;pointer-events:none}
+#bootcv{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+#boot .vig{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,transparent 50%,rgba(2,4,10,.7) 100%);pointer-events:none}
+#boottitle{position:absolute;top:6%;left:0;right:0;text-align:center;pointer-events:none;animation:bt 1.2s ease-out both}
+#boottitle h1{margin:0;font:400 clamp(30px,9vw,60px) Georgia,serif;letter-spacing:.16em;padding-left:.16em;color:#f2d34a;text-shadow:0 0 22px rgba(242,211,74,.5),0 3px 0 #000;animation:glow 3.2s ease-in-out infinite}
+#boottitle small{display:block;margin-top:2px;font:400 clamp(11px,3vw,16px) Georgia,serif;letter-spacing:.9em;padding-left:.9em;color:#9fb4d8;text-shadow:0 2px 0 #000}
+@keyframes bt{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+@keyframes glow{50%{text-shadow:0 0 34px rgba(242,211,74,.85),0 3px 0 #000}}
+#bootpanel{position:absolute;left:0;right:0;bottom:max(16px,3.5%);margin:0 auto;width:min(380px,88%);text-align:center;pointer-events:none}
+#bootpanel .bar{height:11px;border:2px solid rgba(242,211,74,.65);border-radius:8px;background:rgba(0,0,0,.6);overflow:hidden}
+#bootbar{height:100%;width:0;background:linear-gradient(90deg,#8a6a10,#f2d34a,#fff1a8);background-size:200% 100%;box-shadow:0 0 12px rgba(242,211,74,.75);animation:shim 1.6s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+#bootsteps{display:flex;justify-content:space-between;margin:7px 2px 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#59627f}
+#bootsteps span{transition:color .4s}
+#bootsteps span.on{color:#cfd6ec}
+#bootsteps span.now{color:#f2d34a;text-shadow:0 0 8px rgba(242,211,74,.7)}
+#bootmsg{margin:10px 0 2px;font-size:17px;color:#fff;text-shadow:0 2px 0 #000}
+#boothint{margin:2px 0;font-size:12px;color:#9aa6c8;text-shadow:0 1px 0 #000;min-height:15px}
+#boottip{margin:8px 0 0;font-size:12px;font-style:italic;color:#b7c2e6;text-shadow:0 1px 0 #000;min-height:30px;opacity:0;transition:opacity .25s}
+#boottip.in{opacity:1}
+#bootplay{margin:6px 0 0;font-size:11px;color:#d2ff78;opacity:0;animation:fadein 1s 2.5s forwards;text-shadow:0 0 8px rgba(210,255,120,.6)}
+#bootscore{margin:2px 0 0;font-size:12px;color:#e1ff96;min-height:16px;text-shadow:0 1px 0 #000}
+#bootscore.pop{animation:pop .3s}
+@keyframes fadein{to{opacity:.85}}
+@keyframes pop{50%{transform:scale(1.25)}}
+@media (prefers-reduced-motion:reduce){#boottitle,#boottitle h1,#bootbar,#bootplay{animation:none}#bootplay{opacity:.85}}
+
 .card{width:min(360px,100%);text-align:center}
 .card h2{margin:0 0 6px;font-size:24px;text-shadow:0 2px 0 #000}
 .card p{margin:8px 0;font-size:13px;color:#cfd6ec;line-height:1.45}
