@@ -186,7 +186,7 @@ worker) and `src/pwa.js` (registers the worker and shows the install button on t
 
 | Limit | Default | Setting |
 |---|---|---|
-| Worlds that can be opened | seeds 7, 8, 9, 10 (World 1–4) | `WORLD_SEEDS=7,8` |
+| Worlds that can be opened | the start world (7) + the four Travel Planner worlds (42, 100, 999, 2025) | `WORLD_SEEDS=7,42` |
 | Players on the whole server | 120 | `MAX_PLAYERS=200` |
 | Players per world | 40 | |
 | Sockets at once from one network | 12 | |

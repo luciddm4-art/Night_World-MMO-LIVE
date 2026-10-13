@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS } from '../shared/data.js';
 import { Room } from './room.js';
 import { Player } from './player.js';
 import { Store, PgBackend, hashPassword, verifyPassword } from './store.js';
@@ -23,7 +23,7 @@ const ROOM_IDLE_MS = 5 * 60 * 1000;
 // Which world seeds may be opened. A public server must not let anyone open arbitrary worlds (each one costs memory
 // and ticks). WORLD_SEEDS="7,8,9" overrides; unset = the defaults below. createGameServer's own default is "any seed"
 // (tests), start() applies these.
-export const DEFAULT_WORLD_SEEDS = [7, 8, 9, 10];
+export const DEFAULT_WORLD_SEEDS = [7, ...WORLDS.map((w) => w.seed)]; // the start world + every world the Travel Planner offers
 export function parseSeeds(env) {
   const list = (env || '').split(',').map((s) => s.trim()).filter(Boolean).map(Number).filter((n) => Number.isFinite(n));
   return list.length ? list.map(normalizeSeed) : DEFAULT_WORLD_SEEDS;

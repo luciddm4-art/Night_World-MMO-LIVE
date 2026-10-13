@@ -62,7 +62,7 @@ export function renderPanel() {
     WORLDS.forEach((w) => {
       h += '<button class="b" data-a="t:' + w.seed + '"><span>' + w.name + ' <small>· ' + w.tag + '</small></span><span>travel</span></button>';
     });
-    h += '<div style="display:flex;gap:6px;margin-top:8px"><input id="seedin" type="number" placeholder="custom seed" style="flex:1;padding:9px;border-radius:8px;border:1px solid rgba(242,211,74,.5);background:rgba(0,0,0,.4);color:#fff;font:600 14px Georgia,serif"><button class="b" style="width:auto;margin:0" data-a="customseed">Go</button></div>';
+    // (no free-form seed box: the public server only opens the listed worlds)
     h += '<button class="b x" data-a="close" style="margin-top:6px">Close</button>';
   }
   panel.innerHTML = h;
@@ -84,11 +84,6 @@ export function initPanel() {
     if (!b || b.disabled) return;
     const a = b.getAttribute('data-a');
     if (a === 'close') return closePanel();
-    if (a === 'customseed') {
-      const v = parseInt(document.getElementById('seedin').value, 10);
-      if (Number.isFinite(v)) travelToSeed(v);
-      return;
-    }
     if (a.indexOf('t:') === 0) return travelToSeed(parseInt(a.slice(2), 10));
     if (a.indexOf('c:') === 0) send({ t: 'craft', id: a.slice(2) }); // server checks station, materials, space
   });

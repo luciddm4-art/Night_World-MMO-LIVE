@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import { createGameServer, parseSeeds, DEFAULT_WORLD_SEEDS } from '../server/index.js';
 import { makeRoom, makePlayer, findThings } from './helpers.js';
+import { WORLDS } from '../shared/data.js';
 
 // ------------------------------------------------------------------ fuzz: garbage can never break a player or the room
 function rng(seed) { let s = seed; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; }
@@ -79,11 +80,12 @@ test('only the listed worlds can be opened', async () => {
   } finally { await env.gs.stop(); }
 });
 
-test('production defaults: four worlds, WORLD_SEEDS overrides', () => {
+test('production defaults: the start world plus every Travel Planner world, WORLD_SEEDS overrides', () => {
   assert.deepEqual(parseSeeds(''), DEFAULT_WORLD_SEEDS);
   assert.deepEqual(parseSeeds(undefined), DEFAULT_WORLD_SEEDS);
   assert.deepEqual(parseSeeds('7, 21 ,x'), [7, 21]);
   assert.ok(DEFAULT_WORLD_SEEDS.includes(7), 'existing characters live in world 7');
+  for (const w of WORLDS) assert.ok(DEFAULT_WORLD_SEEDS.includes(w.seed), 'the portal offers ' + w.name);
 });
 
 test('server-wide player cap', async () => {
