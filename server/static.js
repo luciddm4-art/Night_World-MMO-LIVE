@@ -14,11 +14,12 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
 };
 const PUBLIC_DIRS = new Set(['css', 'src', 'shared', 'vendor', 'assets']);
-const PUBLIC_FILES = new Set(['index.html', 'favicon.ico']);
-const COMPRESSIBLE = new Set(['.html', '.js', '.mjs', '.css', '.json', '.svg', '.txt']);
+const PUBLIC_FILES = new Set(['index.html', 'favicon.ico', 'manifest.webmanifest', 'sw.js']);
+const COMPRESSIBLE = new Set(['.html', '.webmanifest', '.js', '.mjs', '.css', '.json', '.svg', '.txt']);
 
 export function createStaticHandler(root) {
   const base = path.resolve(root);
@@ -48,7 +49,7 @@ export function createStaticHandler(root) {
     const headers = {
       'content-type': MIME[ext] || 'application/octet-stream',
       'x-content-type-options': 'nosniff',
-      'cache-control': ext === '.html' ? 'no-cache' : new URL(req.url, 'http://x').searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
+      'cache-control': ext === '.html' || rel === 'sw.js' || rel === 'manifest.webmanifest' ? 'no-cache' : new URL(req.url, 'http://x').searchParams.has('v') ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
       vary: 'Accept-Encoding',
     };
     const wantsGzip = COMPRESSIBLE.has(ext) && /\bgzip\b/.test(req.headers['accept-encoding'] || '');

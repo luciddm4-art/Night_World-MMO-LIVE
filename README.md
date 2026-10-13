@@ -160,3 +160,16 @@ The page opens straight into a pixel-art night scene (moon, stars, the walled to
 It covers the cold start of the sleeping free server: a progress bar (Server / Connection / World), rotating tips and
 a small "tap the fireflies" game. It fades out when the socket opens (never sooner than 1.3 s, so a fast start still
 shows the scene).
+
+## Install as an app (PWA)
+
+The game is an installable web app: `manifest.webmanifest` (name, icons, standalone full-screen), `sw.js` (service
+worker) and `src/pwa.js` (registers the worker and shows the install button on the login card).
+
+- **Android Chrome:** open the game, tap **Install as an app** on the login card (or ⋮ menu → *Install app*). It gets a
+  home-screen icon and opens full screen with no browser bar.
+- **iPhone Safari:** Share → *Add to Home Screen* (the login card shows this hint).
+- The service worker only speeds up the second start (saved scripts) and keeps the page available if the network is
+  slow. The game itself still needs the server, and the worker never touches the websocket or `/health`.
+- Updates: the page is always fetched fresh first, and scripts have hashed URLs (`npm run stamp`), so a deploy reaches
+  installed apps on the next open. If you change `sw.js` itself, bump `CACHE` in it.
