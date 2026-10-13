@@ -9,12 +9,21 @@ import { createWorld } from '../shared/world.js';
 import { sweep, isFree } from '../shared/collision.js';
 import * as Inv from '../shared/inventory.js';
 import { round2 } from './player.js';
+import { encodeRabbit } from '../shared/wire.js';
 
 const SLACK = 2.0; // positional tolerance for network lag (units)
 const STATION_SLACK = 1.0;
 const GATHER_GRACE_MS = 250;
 const SNAP_PLAYER_R = 220;
 const SNAP_RABBIT_R = 160;
+const KEYFRAME_MS = 20000; // protocol 2: a full resync this often (cheap insurance against drift)
+const HEARTBEAT_MS = 2000; // protocol 2: at least one tiny message this often so clients can tell the line is alive
+const round1 = (v) => Math.round(v * 10) / 10;
+// protocol 2: how often (ms) a moving thing is re-sent, by distance in world units: [[maxDistance, everyMs], ...]
+const RABBIT_TIERS = [[30, 0], [70, 200], [Infinity, 500]];
+const PLAYER_TIERS = [[40, 0], [90, 200], [Infinity, 500]];
+const every = (d, tiers) => { for (const [max, ms] of tiers) if (d <= max) return ms; return 500; };
+const SNAP_RABBIT_R_V2 = 125; // the fog hides rabbits beyond ~120 units, so do not send them
 const GATHER_STALE_MS = 15000;
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
@@ -54,6 +63,7 @@ export class Room {
     p.joinedAt = this.now();
     p.lastPosT = p.joinedAt;
     p.known = new Set();
+    p.snapState = null; // protocol-2 delta bookkeeping restarts with every join
     p.y = Math.max(0.13, this.world.hgt(p.x, p.z));
     this.ensureRabbits();
     return this.welcome(p);
@@ -534,6 +544,7 @@ export class Room {
     const now = this.now();
     const list = [...this.players.values()];
     for (const p of list) {
+      if (p.v2) { this.sendDelta(p, list, now); continue; }
       const pl = [];
       const seen = new Set();
       for (const q of list) {
@@ -552,5 +563,75 @@ export class Room {
       }
       p.send({ t: 's', me: p.view(now), p: pl, rb, o: list.length });
     }
+  }
+
+  // Protocol 2 ("d" messages): tell this player only what changed since the last message we sent them.
+  //  - things that did not change are not repeated; far-away things update less often (the fog hides them anyway);
+  //  - entries are compact arrays (see shared/wire.js);
+  //  - every KEYFRAME_MS everything restarts and a full picture goes out with f:1, so the client can also drop
+  //    anything it should no longer have; and a tiny heartbeat goes out at least every HEARTBEAT_MS.
+  sendDelta(p, list, now) {
+    let st = p.snapState;
+    const key = !st || now - st.keyAt >= KEYFRAME_MS;
+    if (key) st = p.snapState = { keyAt: now, sentAt: now, pl: new Map(), rb: new Map(), ra: 0, me: '', o: -1 };
+    const m = { t: 'd' };
+    let any = key;
+    if (key) m.f = 1;
+
+    const pl = [];
+    const seenP = new Set();
+    for (const q of list) {
+      if (q === p) continue;
+      const dx = q.x - p.x, dz = q.z - p.z;
+      if (Math.abs(dx) > SNAP_PLAYER_R || Math.abs(dz) > SNAP_PLAYER_R) continue;
+      seenP.add(q.id);
+      const w = weaponIdOf(q.inv.eq) || 0;
+      const x = round1(q.x), z = round1(q.z), y = round1(q.y), r = round2(q.r), mt = q.mounted ? 1 : 0;
+      const k = x + '|' + z + '|' + y + '|' + r + '|' + q.a + '|' + mt + '|' + w;
+      const prev = st.pl.get(q.id);
+      if (prev && prev.k === k) continue;
+      // same except for movement of someone far away: wait a little
+      if (prev && prev.s === q.a + '|' + mt + '|' + w && now - prev.t < every(Math.hypot(dx, dz), PLAYER_TIERS)) continue;
+      const e = [q.id, x, z, y, r, q.a, mt, w];
+      if (!prev) e.push(q.name, q.color); // name/colour only on first sight
+      pl.push(e);
+      st.pl.set(q.id, { k, t: now, s: q.a + '|' + mt + '|' + w });
+    }
+    const pg = [];
+    for (const id of st.pl.keys()) if (!seenP.has(id)) { pg.push(id); st.pl.delete(id); }
+
+    const rb = [];
+    const seenR = new Set();
+    for (const r of this.rabbits.values()) {
+      const dx = r.x - p.x, dz = r.z - p.z;
+      if (Math.abs(dx) > SNAP_RABBIT_R_V2 || Math.abs(dz) > SNAP_RABBIT_R_V2) continue;
+      seenR.add(r.id);
+      const x = round1(r.x), z = round1(r.z), d = r.dead ? 1 : 0, a = r.mode === 'chase' || r.mode === 'attack' ? 1 : 0;
+      const stat = r.hp + '|' + d + '|' + a;
+      const prev = st.rb.get(r.id);
+      if (prev) {
+        if (prev.s === stat && prev.x === x && prev.z === z) continue;
+        // health / death / alert always go out at once; plain wandering only as often as its distance deserves
+        if (prev.s === stat && now - prev.t < every(Math.hypot(dx, dz), RABBIT_TIERS)) continue;
+      }
+      const alias = prev ? prev.al : ++st.ra;
+      rb.push(encodeRabbit(alias, x, z, r.hp, d, a, prev ? undefined : r.id));
+      st.rb.set(r.id, { al: alias, x, z, s: stat, t: now });
+    }
+    const rg = [];
+    for (const [id, v] of st.rb) if (!seenR.has(id)) { rg.push(v.al); st.rb.delete(id); }
+
+    const me = p.view(now, true);
+    const mk = JSON.stringify(me);
+    if (mk !== st.me) { st.me = mk; m.me = me; any = true; }
+    if (list.length !== st.o) { st.o = list.length; m.o = list.length; any = true; }
+    if (pl.length) { m.p = pl; any = true; }
+    if (pg.length) { m.pg = pg; any = true; }
+    if (rb.length) { m.rb = rb; any = true; }
+    if (rg.length) { m.rg = rg; any = true; }
+
+    if (!any && now - st.sentAt < HEARTBEAT_MS) return; // nothing new: say nothing
+    st.sentAt = now;
+    p.send(m);
   }
 }

@@ -44,7 +44,7 @@ ok((await A.textContent('#who')).includes('Tester1'), 'name + online count shown
 
 // next to a tree
 const room = gs.rooms.get(7);
-const player = [...room.players.values()][0];
+const player = [...room.players.values()].find((p) => p.name === 'Tester1'); // by name: the map can briefly hold a stale entry first
 let tree;
 for (let cx = -6; cx < 6 && !tree; cx++) for (let cz = -6; cz < 6 && !tree; cz++) {
   const a = room.world.ctrees(cx, cz);
@@ -89,7 +89,8 @@ await wait(900);
 ok((await B.evaluate(() => Object.keys(window.__nwo.S.others).length)) === 1, 'guest sees the other player');
 
 // rabbit fight through the real UI
-const rab = { id: 'rab:e2e:1', x: player.x, z: player.z + 1.0, hp: 50, mode: 'wander', tx: 0, tz: 0, wt: 1e9, atkT: 0, dead: false, gathered: false, deadAt: 0, target: null, home: Math.floor(player.x / 32) + ',' + Math.floor(player.z / 32) };
+// the rabbit stays put: with tx/tz at the origin it used to stroll away on slow machines
+const rab = { id: 'rab:e2e:1', x: player.x, z: player.z + 1.0, hp: 50, mode: 'wander', tx: player.x, tz: player.z + 1.0, wt: 1e9, atkT: 0, dead: false, gathered: false, deadAt: 0, target: null, home: Math.floor(player.x / 32) + ',' + Math.floor(player.z / 32) };
 room.rabbits.set(rab.id, rab);
 await A.evaluate(() => { window.__nwo.S.P.r = 0; });
 // slow CI machines: wait until the server has really heard our facing before swinging

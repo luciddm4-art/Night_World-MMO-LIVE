@@ -370,6 +370,7 @@ export function createGameServer(opts = {}) {
           ws.send(JSON.stringify(obj));
         },
       });
+      player.v2 = m.v === 2; // new clients understand delta snapshots ("d"); old pages keep getting full ones ("s")
       if (!player.restore(saved, seed)) player.setSpawn();
       else room.ensureStandable(player);
       const entry = { player, room, ws };

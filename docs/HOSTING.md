@@ -6,30 +6,46 @@ Your machine and Render's are not identical, so read these as good estimates, no
 
 ## Measured
 
-| Players | Message compression | CPU (free plan emulation) | Ping p95 | Data per player |
-|---|---|---|---|---|
-| 1 | on | fine | fine | 3.4 KB/s = **12 MB/hour** |
-| 10 | off | fine | 25 ms | 20 KB/s = 70 MB/hour |
-| 10 | **on** | fine | fine | **5.6 KB/s = 20 MB/hour** |
-| 40 (all crowded in town) | off | fine | 43 ms | 41 KB/s = 145 MB/hour |
-| 40 (all crowded in town) | on | tight | 139 ms | 10 KB/s = 36 MB/hour |
-| 60 in two worlds | off | ok | 86 ms | ~37 KB/s |
-| 60 in two worlds | on | **overloaded** | 431 ms | 9 KB/s |
+**Important:** Render's front door (a Cloudflare proxy) does not pass WebSocket compression through (checked against the
+live server: the handshake comes back without `permessage-deflate`). So on Render **compression does nothing**, and the
+numbers that count are the "no compression" ones. The real fix for bandwidth is to send less, which is what
+"delta snapshots" (protocol 2) do: the server only tells each player what changed (see `shared/wire.js`).
+
+Data per player, no compression (as on Render), all players crowded in town:
+
+| Players | Old protocol | **Delta protocol (now)** | Saving |
+|---|---|---|---|
+| 1 | 10.9 KB/s = 38 MB/hour | **0.7 KB/s = 2 MB/hour** | 16x |
+| 5 | 17.2 KB/s = 61 MB/hour | **1.4 KB/s = 5 MB/hour** | 12x |
+| 20 | 27.8 KB/s = 98 MB/hour | **4.2 KB/s = 15 MB/hour** | 6.5x |
+| 40 | 40.6 KB/s = 143 MB/hour | **7.7 KB/s = 27 MB/hour** | 5x |
+
+The more players stand together and move, the more there is to tell, so crowds save less than a lone player.
+
+CPU (free-plan emulation with `--throttle 0.1`, delta protocol, no compression):
+
+| Players | Ping p95 | Verdict |
+|---|---|---|
+| 40 | 84 ms | comfortable |
+| 60 in two worlds | 100 ms | fine |
+| 80 in two worlds | 193 ms | too much |
 
 (Ping p95 has a floor of about 90 ms in the emulation because the free CPU quota pauses the server ~90 ms in every 100 ms.)
 
 What this means:
 
-1. **Bandwidth is the first wall, not CPU.** Compression cuts data 3–4×, so it is **on by default** now
-   (`WS_DEFLATE=0` turns it off). Without it a handful of players would burn through a small monthly allowance quickly.
-2. **CPU is the second wall.** Compression costs ~50 % more CPU, so on the free plan about **40 players** is the limit.
-   `MAX_PLAYERS` therefore defaults to **40**; at the limit new players see "The server is full right now".
+1. **Bandwidth was the first wall, CPU is the second.** The delta protocol makes 5 GB last about 5-16x longer than before.
+2. **`MAX_PLAYERS` stays at 40.** The test says about 60 would hold, but real Render cores are probably slower than this
+   machine, so 40 keeps a margin. At the limit new players see "The server is full right now".
 3. **Check your allowance.** Render's current Hobby workspace includes **5 GB of outbound bandwidth per month**
-   (older plans had 100 GB; that was changed in April 2026 according to published pricing summaries), then $0.15/GB, and
-   without a payment method on file Render suspends free services for the rest of the month. Look at
-   *Render dashboard → Billing / Usage* for your real number. At 12–20 MB per player-hour, 5 GB is roughly
-   250–400 player-hours a month, so about **8–13 player-hours a day**. That is plenty for friends, not for a public launch.
+   (confirmed in the dashboard), then $0.15/GB, and without a payment method on file Render suspends free services for
+   the rest of the month. Look at *Render dashboard -> Billing / Usage* for the running total. With the delta protocol
+   5 GB is roughly **2,000 hours of solo play** or **about 350 player-hours with 20 players together** (~12 a day).
    (The game files themselves come from GitHub Pages, so they don't count.)
+4. **Old pages keep working.** A page that has not refreshed since the update asks for no deltas and gets the old full
+   snapshots (more data) until it reloads.
+5. **WebSocket compression** is still switched on (`WS_DEFLATE=0` turns it off). It only helps on hosts that let it
+   through (for example a VPS in front of which nothing strips it); on Render it is simply unused.
 
 ## Your options
 
@@ -38,7 +54,7 @@ What this means:
 | Always awake (no 30–60 s cold start) | mostly (pinger + self-ping) | **yes** | yes |
 | CPU | 0.1 | **0.5** (5× more) | 0.5 |
 | Players at once | ~40 | ~150+ (raise `MAX_PLAYERS`) | ~150+ |
-| Bandwidth | 5 GB/month (check) | the workspace allowance, then $0.15/GB | pay as you go |
+| Bandwidth | 5 GB/month (confirmed) | the workspace allowance, then $0.15/GB | pay as you go |
 | Postgres | Neon free (separate, fine) | same | same |
 | Good for | friends, testing | a real public launch | a popular game |
 
@@ -57,7 +73,8 @@ page for a week, then decide about more. A custom domain is optional and indepen
 
 ```
 npm run loadtest -- --players 40 --seconds 20 --throttle 0.1          # free-plan emulation
+npm run loadtest -- --players 20 --seconds 20 --legacy                # an old page (full snapshots), for comparison
 npm run loadtest -- --players 100 --worlds 3 --seconds 20             # a whole core
-WS_DEFLATE=0 npm run loadtest -- --players 40 --seconds 20            # without compression
+WS_DEFLATE=0 npm run loadtest -- --players 40 --seconds 20            # without compression (what Render really does)
 npm run loadtest -- --players 40 --budget-gb 25                       # your own monthly allowance
 ```

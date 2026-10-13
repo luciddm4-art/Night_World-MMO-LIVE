@@ -5,11 +5,12 @@ import { T, scene, cam, renderer, onResize, sky } from './scene.js';
 import { animateCourtyard } from './courtyard.js';
 import { mkFig, animFig, upS, setHeld } from './figures.js';
 import { hgt, updateWorld, isFree, setNodeQty, resetNodes, updateNodeFx } from './terrain.js';
-import { syncRabbits, updateRabbits, clearRabbits, onHit } from './rabbits.js';
+import { syncRabbits, patchRabbits, updateRabbits, clearRabbits, onHit } from './rabbits.js';
 import { burst, floatText, updateFx, updateFloaters, shake, applyShake, hurtFlash, flyGain } from './fx.js';
 import { sfx, initAudio } from './audio.js';
 import { vibrate, initSettings, closeSettings } from './settings.js';
-import { syncPlayers, updatePlayers, clearPlayers } from './players.js';
+import { decodePlayer, decodeRabbit } from '../shared/wire.js';
+import { syncPlayers, patchPlayers, updatePlayers, clearPlayers } from './players.js';
 import { on, send, connect, stop } from './net.js';
 import { say, showBoot, updateHPUI, updateHud } from './ui.js';
 import { initInventory, renderInv, toggleInv, invOpen } from './inventory.js';
@@ -75,14 +76,38 @@ on('welcome', (m) => {
   updateHPUI();
   updateHud();
 });
+function applyMe(me) {
+  S.st.hp = me.hp;
+  S.st.maxHp = me.mh;
+  applyMountState(me.mt, me.dk, me.dh, me.dr);
+}
+function applyOnline(o) {
+  if (S.online !== o) { S.online = o; updateHud(); }
+}
+// Full snapshot (old protocol; the server still sends it to pages that did not ask for deltas).
 on('s', (m) => {
-  S.st.hp = m.me.hp;
-  S.st.maxHp = m.me.mh;
-  applyMountState(m.me.mt, m.me.dk, m.me.dh, m.me.dr);
-  if (S.online !== m.o) { S.online = m.o; updateHud(); }
+  applyMe(m.me);
+  applyOnline(m.o);
   syncPlayers(m.p);
   syncRabbits(m.rb);
   updateHPUI();
+});
+// Delta snapshot (protocol 2): only what changed. f:1 marks a full picture, so anything missing is gone.
+let rabAlias = {}; // the server's short numbers for rabbits -> real rabbit ids (restarted by every keyframe)
+on('d', (m) => {
+  if (m.me) { applyMe(m.me); updateHPUI(); }
+  if (m.o !== undefined) applyOnline(m.o);
+  if (m.f) rabAlias = {};
+  const pl = (m.p || []).map(decodePlayer);
+  const rb = (m.rb || []).map((a) => decodeRabbit(a, rabAlias));
+  const rg = (m.rg || []).map((al) => rabAlias[al]);
+  if (m.f) {
+    syncPlayers(pl);
+    syncRabbits(rb);
+  } else {
+    patchPlayers(pl, m.pg);
+    patchRabbits(rb, rg);
+  }
 });
 on('inv', (m) => {
   S.inv = m.inv;
