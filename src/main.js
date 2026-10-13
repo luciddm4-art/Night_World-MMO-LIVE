@@ -119,7 +119,7 @@ on('gain', (m) => {
 on('cast', onCast);
 on('pos', (m) => { P.x = m.x; P.z = m.z; vel.x = vel.z = 0; cf.snap = true; });
 on('chat', (m) => addChat(m.n, m.m));
-on('kick', (m) => { stop(); showBoot(m.m, 'Reload the page to play here again.'); });
+on('kick', (m) => { stop(); showBoot(m.m, 'Reload the page to play here again.', { tips: false, game: false }); });
 on('close', () => {
   cancelGather(false);
   clearPlayers();

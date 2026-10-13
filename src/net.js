@@ -2,7 +2,7 @@
 // with back-off, and a tiny message bus.  Game logic lives elsewhere.
 import { endpoints } from './config.js';
 import { S } from './state.js';
-import { showBoot, hideBoot, showBanner, hideBanner, setPing } from './ui.js';
+import { showBoot, hideBoot, showBanner, hideBanner, setPing, setBootProgress } from './ui.js';
 
 const handlers = {};
 let ws = null;
@@ -40,10 +40,12 @@ async function warmUp(http, attempt) {
   const tick = setInterval(() => {
     const s = Math.round((Date.now() - t0) / 1000);
     if (soft && s < 8) return;
+    // the bar creeps forward while we wait (fast at first, then slower), so it never looks frozen
+    setBootProgress(0.08 + 0.52 * (1 - Math.exp(-s / 20)));
     if (s >= 3 || soft) {
       showBoot(
         attempt ? 'Reconnecting…' : 'Waking the server…',
-        'The free host sleeps when nobody is playing. This can take up to a minute — ' + s + 's',
+        'The free server naps when nobody is playing. Waking it takes up to a minute — ' + s + 's',
       );
       hideBanner();
     }
@@ -57,6 +59,7 @@ async function warmUp(http, attempt) {
       try {
         await fetch(http + '/health', { mode: 'no-cors', cache: 'no-store', signal: ctl.signal });
         done = true;
+        setBootProgress(0.7); // server answered
       } catch {
         await sleep(1500);
         if (Date.now() - t0 > 120000) break; // give the socket a go anyway
@@ -74,7 +77,7 @@ function openSocket(url) {
     let opened = false;
     try { ws = new WebSocket(url); } catch { resolve(false); return; }
     const guard = setTimeout(() => { try { ws.close(); } catch { /* ignore */ } }, 30000);
-    ws.onopen = () => { opened = true; lastRx = Date.now(); clearTimeout(guard); hideBoot(); hideBanner(); emit('open'); };
+    ws.onopen = () => { opened = true; lastRx = Date.now(); clearTimeout(guard); setBootProgress(0.92); hideBoot(); hideBanner(); emit('open'); };
     ws.onmessage = (e) => {
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
