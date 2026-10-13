@@ -148,6 +148,16 @@ export class Store {
     return this.data.accounts[key];
   }
 
+  // Moderation: a banned account can't log in (tokens are checked at login too). info = {reason, by, ts} or null to unban.
+  setBan(name, info) {
+    const acct = this.get(name);
+    if (!acct) return false;
+    if (info) acct.banned = info; else delete acct.banned;
+    this.dirtyAcc.add(String(name).toLowerCase());
+    this.scheduleFlush();
+    return true;
+  }
+
   issueToken(name) {
     const token = crypto.randomBytes(32).toString('hex');
     const h = sha(token);

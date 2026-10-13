@@ -196,3 +196,25 @@ worker) and `src/pwa.js` (registers the worker and shows the install button on t
 | Failed logins per network | 8 per 10 minutes | |
 
 `test/abuse.test.js` throws thousands of garbage messages at a player and the server on every run.
+
+## Moderation
+
+- **Chat filter:** bad words are replaced with `****` on the server (disguises like `f.u.c.k` or `sh1t` too; whole words only
+  for short ones, so "Scunthorpe" is fine). Add your own with `CHAT_BLOCKLIST=word1,word2`.
+- **Names:** reserved names (admin, moderator, server, staff, `GuestNN` …) and rude names can't be registered.
+- **Players:** type `/report <name> <what happened>` in chat. It is logged as `REPORT …` in the Render logs.
+- **Admins:** set the Render environment variable `ADMINS=YourAccountName` (comma-separated, registered accounts only),
+  then, logged in as that account, type in chat:
+
+| Command | Does |
+|---|---|
+| `/reports` | shows the last 5 reports |
+| `/kick <name>` | removes a player (guests too) |
+| `/mute <name> [minutes]` | blocks their chat (default 10, max 1440) |
+| `/unmute <name>` | |
+| `/ban <name> [reason]` | bans an account: kicked now, refused at login (saved in the database) |
+| `/unban <name>` | |
+| `/say <text>` | announcement to every world, shown as "Server" |
+
+Admins can't kick, mute or ban each other. Every admin action is logged as `ADMIN …`. Non-admins who type an
+admin command just see "Unknown command".
