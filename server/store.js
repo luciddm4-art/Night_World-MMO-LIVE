@@ -186,7 +186,8 @@ export class Store {
   saveCharacter(name, save) {
     const acct = this.get(name);
     if (!acct) return;
-    const sig = JSON.stringify([save.inv, save.hpRatio, save.color, save.lastSeed, save.world]);
+    const foodSig = save.food ? [save.food.id, Math.round(save.food.ms / 60000)] : null; // minute precision: a ticking buff doesn't rewrite the account every save
+    const sig = JSON.stringify([save.inv, save.hpRatio, save.color, save.lastSeed, save.world, foodSig]);
     const same = this.sigs.get(acct) === sig;
     this.sigs.set(acct, sig);
     if (same && acct.save) return; // nothing changed since the last save: don't wake the database
@@ -198,7 +199,7 @@ export class Store {
       keys.sort((a, b) => (worlds[a].t || 0) - (worlds[b].t || 0));
       for (const k of keys.slice(0, keys.length - MAX_WORLDS_SAVED)) delete worlds[k];
     }
-    acct.save = { inv: save.inv, hpRatio: save.hpRatio, color: save.color, lastSeed: save.lastSeed, worlds };
+    acct.save = { inv: save.inv, hpRatio: save.hpRatio, color: save.color, lastSeed: save.lastSeed, food: save.food || null, worlds };
     this.dirtyAcc.add(name.toLowerCase());
     this.scheduleFlush();
   }

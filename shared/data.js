@@ -1,5 +1,6 @@
 // Game data shared by the server (authoritative) and the browser client (display).
 // Plain ES module: no Node or browser APIs in here.
+import { POTIONS, FOODS } from './consumables.js';
 
 export const CFG = {
   CS: 32, // chunk size (world units)
@@ -28,6 +29,13 @@ export const CFG = {
   REGEN_COMBAT_LOCK: 5000,
   INV_SLOTS: 64,
   STACK_MAX: 99,
+  MANA_BASE: 100, // every character has mana; spells spend it
+  MANA_REGEN_PER_SEC: 2,
+  BOOT_SPEED: 0.4, // any boots: +40% walking speed (not while riding)
+  FOOD_MS: 30 * 60 * 1000, // a food buff lasts 30 minutes
+  POTION_CD_MS: 20000, // default potion cooldown
+  GCD_MS: 600, // short pause between two skills
+  SPELL_MOVE_CANCEL: 1.5, // walking further than this while a spell is being cast cancels it
 };
 
 export const SEED_LIMIT = 1e9;
@@ -48,6 +56,17 @@ export const ITEMS = {
   donkey: { n: 'Donkey', s: 'DK' },
 };
 
+for (const id in POTIONS) ITEMS[id] = { n: POTIONS[id].n, s: POTIONS[id].s || 'PT' };
+for (const id in FOODS) ITEMS[id] = { n: FOODS[id].n, s: FOODS[id].s || 'FD' };
+// Adds a potion or food at run time (the data files above do this at load; tests use it too).
+export function registerConsumable(kind, id, def) {
+  const table = kind === 'potion' ? POTIONS : FOODS;
+  table[id] = def;
+  ITEMS[id] = { n: def.n, s: def.s || (kind === 'potion' ? 'PT' : 'FD'), tier: def.tier || 1 };
+  if (!SLOT_ACCEPTS[kind].includes(id)) SLOT_ACCEPTS[kind].push(id);
+}
+export { POTIONS, FOODS };
+
 // Every item is Tier 1 for now. Later worlds can add higher tiers (T2 resources -> T2 refined -> T2 gear).
 for (const k of Object.keys(ITEMS)) ITEMS[k].tier = 1;
 
@@ -62,8 +81,10 @@ export const FAMILIES = {
   leather: { raw: 'hide', refined: 'leather' },
 };
 
-export const EQUIP_SLOTS = ['head', 'chest', 'foot', 'main', 'off', 'mount'];
-export const SLOT_LABEL = { head: 'HD', chest: 'CH', foot: 'FT', main: 'MH', off: 'OH', mount: 'MT' };
+export const EQUIP_SLOTS = ['head', 'chest', 'foot', 'main', 'off', 'mount', 'potion', 'food'];
+export const SLOT_LABEL = { head: 'HD', chest: 'CH', foot: 'FT', main: 'MH', off: 'OH', mount: 'MT', potion: 'PT', food: 'FD' };
+// potion and food slots hold a whole stack that is used up one by one
+export const STACK_SLOTS = ['potion', 'food'];
 export const SLOT_ACCEPTS = {
   head: ['iron_helm', 'cloth_cowl', 'leather_hood'],
   chest: ['iron_chest', 'cloth_robe', 'leather_jacket'],
@@ -71,6 +92,8 @@ export const SLOT_ACCEPTS = {
   main: ['sword', 'fire_staff', 'bow', 'torch'],
   off: ['spell_book', 'torch'],
   mount: ['donkey'],
+  potion: Object.keys(POTIONS),
+  food: Object.keys(FOODS),
 };
 // Slots that must all be filled to earn the donkey.
 export const REWARD_SLOTS = ['head', 'chest', 'foot', 'main', 'off'];

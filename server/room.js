@@ -3,8 +3,9 @@
 // Room knows nothing about sockets: players have a send(obj) function, and the
 // clock/RNG are injectable, which keeps it fully unit-testable.
 import {
-  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN, REWARD_SLOTS, inSafeZone, weaponOf, weaponIdOf,
+  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, STACK_SLOTS, POTIONS, FOODS, CHAT_MAX_LEN, REWARD_SLOTS, inSafeZone, weaponOf, weaponIdOf,
 } from '../shared/data.js';
+import { SKILLS, SKILL_KEYS, SKILL_STATS, skillIdsFor } from '../shared/skills.js';
 import { createWorld } from '../shared/world.js';
 import { sweep, isFree } from '../shared/collision.js';
 import * as Inv from '../shared/inventory.js';
@@ -65,6 +66,11 @@ export class Room {
     p.known = new Set();
     p.snapState = null; // protocol-2 delta bookkeeping restarts with every join
     p.y = Math.max(0.13, this.world.hgt(p.x, p.z));
+    if (p.pendingFood) { // a food buff from a previous session keeps the time it had left
+      p.food = { id: p.pendingFood.id, until: p.joinedAt + p.pendingFood.ms };
+      p.pendingFood = null;
+      p.recalc();
+    }
     this.ensureRabbits();
     return this.welcome(p);
   }
@@ -84,6 +90,8 @@ export class Room {
       you: {
         x: round2(p.x), z: round2(p.z), r: round2(p.r), c: p.color,
         ...p.view(this.now()), inv: p.inv, st: this.statsOf(p),
+        mana: { v: round1(p.mana), max: p.maxMana, rate: p.manaRegen() },
+        buffs: this.buffsOf(p, this.now()),
       },
       depleted: [...this.depleted].map(([id, s]) => [id, s.qty]),
       chat: this.chatLog.slice(-20),
@@ -92,7 +100,14 @@ export class Room {
   }
 
   statsOf(p) {
-    return { maxHp: p.maxHp, dmg: p.stats.dmg, haste: p.stats.haste, def: p.stats.def };
+    const fb = p.foodBuff();
+    return {
+      maxHp: p.maxHp,
+      dmg: round2(p.stats.dmg * (1 + (fb.dmg || 0))),
+      haste: p.stats.haste,
+      def: round2(1 - (1 - p.stats.def) * (1 - Math.min(0.9, fb.dr || 0))),
+      speed: p.stats.speed, // boots: walking speed bonus (the page applies it to its own movement)
+    };
   }
 
   // ------------------------------------------------------------ messaging
@@ -125,6 +140,8 @@ export class Room {
       case 'mount': return this.onMount(p);
       case 'dismount': return this.onDismount(p);
       case 'chat': return this.onChat(p, m);
+      case 'skill': return this.onSkill(p, m);
+      case 'use': return this.onUse(p, m);
       default: return undefined;
     }
   }
@@ -140,7 +157,7 @@ export class Room {
     // no matter how many (or how few) position packets you send.
     const dtS = Math.max(0, (now - p.lastPosT) / 1000);
     p.lastPosT = now;
-    const vmax = (p.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED) * 1.15;
+    const vmax = (p.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED * (1 + p.stats.speed)) * 1.15;
     p.moveBudget = Math.min(vmax * 1.5, p.moveBudget + vmax * dtS);
     const d = dist(x, z, p.x, p.z);
     let nx = x, nz = z;
@@ -198,7 +215,7 @@ export class Room {
   }
 
   onGather(p, m) {
-    if (p.gather) return this.fail(p, 'Already busy');
+    if (p.gather || p.spell) return this.fail(p, 'Already busy');
     const tgt = this.resolveTarget(m.kind, m.id);
     if (!tgt) return this.fail(p, 'Nothing to gather there');
     if (dist(p.x, p.z, tgt.x, tgt.z) > tgt.range + SLACK) return this.fail(p, 'Too far away');
@@ -246,7 +263,7 @@ export class Room {
 
   // ------------------------------------------------------------ combat
   onAttack(p, m) {
-    if (p.mounted) return;
+    if (p.mounted || p.spell) return;
     const now = this.now();
     const wp = weaponOf(p.inv.eq); // fists, sword, bow or fire staff: reach / damage / cooldown / aim all come from the weapon
     const cd = wp.cd * (1 - p.stats.haste);
@@ -255,7 +272,7 @@ export class Room {
     p.a = (p.a + 1) % 1000000;
     if (isNum(m.r)) p.r = clamp(m.r, 10);
     const fx = Math.sin(p.r), fz = Math.cos(p.r);
-    const dmg = Math.round(wp.dmg * p.stats.dmg);
+    const base = wp.dmg * p.dmgMult(now);
     const reach = wp.reach + 0.6; // +0.6: lag tolerance
     const inCone = [];
     for (const rb of this.rabbits.values()) {
@@ -273,9 +290,9 @@ export class Room {
       targets = [inCone[0]];
     }
     const struck = new Set();
-    for (const { rb } of targets) { struck.add(rb.id); this.damageRabbit(rb, dmg, p, now, wp.id, false); }
+    for (const { rb } of targets) { struck.add(rb.id); this.damageRabbit(rb, Math.round(base * (1 + this.takeMark(p, now))), p, now, wp.id, false); }
     if (wp.splash > 0) { // fire: scorches rabbits standing near the one that was hit
-      const c = targets[0].rb, sd = Math.round(wp.splash * p.stats.dmg);
+      const c = targets[0].rb, sd = Math.round(wp.splash * p.dmgMult(now));
       for (const rb of this.rabbits.values()) {
         if (rb.dead || struck.has(rb.id)) continue;
         if (dist(rb.x, rb.z, c.x, c.z) <= wp.splashR) this.damageRabbit(rb, sd, p, now, wp.id, true);
@@ -321,6 +338,7 @@ export class Room {
     if (!Number.isInteger(i) || i < 0 || i >= CFG.INV_SLOTS || !p.inv.slots[i]) return;
     const id = p.inv.slots[i].id;
     if (!Inv.equipFromBag(p.inv, i)) return this.fail(p, 'Cannot equip that');
+    this.cancelSpell(p);
     p.recalc();
     this.toast(p, 'Equipped ' + ITEMS[id].n);
     this.checkDonkeyReward(p);
@@ -330,6 +348,7 @@ export class Room {
   onUnequip(p, m) {
     if (!EQUIP_SLOTS.includes(m.slot) || !p.inv.eq[m.slot]) return;
     if (!Inv.unequip(p.inv, m.slot)) return this.fail(p, 'Inventory full');
+    this.cancelSpell(p);
     if (m.slot === 'mount') {
       p.mounted = false;
       p.donkey = null;
@@ -351,7 +370,7 @@ export class Room {
   // ------------------------------------------------------------ mount
   mountWait(p) { return Math.max(0, p.mountReadyAt - this.now()); }
   onMount(p) {
-    if (p.mounted || p.gather) return;
+    if (p.mounted || p.gather || p.spell) return;
     if (!p.hasMount()) return this.fail(p, 'No donkey equipped');
     const wait = this.mountWait(p);
     if (wait > 0) return this.fail(p, 'The donkey is recovering (' + Math.ceil(wait / 1000) + 's)');
@@ -388,6 +407,186 @@ export class Room {
     p.donkey = { x: p.x + Math.cos(p.r) * 1.2, z: p.z + Math.sin(p.r) * 1.2 };
     p.dirty = true;
     this.toast(p, 'Dismounted');
+  }
+
+  // ------------------------------------------------------------ mana, skills, potions and food
+  sendMana(p) { p.send({ t: 'mana', v: round1(p.mana), max: p.maxMana, rate: p.manaRegen() }); }
+  buffsOf(p, now) {
+    const seen = new Map();
+    for (const b of p.buffs) if (b.until > now && !seen.has(b.id)) seen.set(b.id, { id: b.id, ms: Math.round(b.until - now) });
+    return { list: [...seen.values()], food: p.food && p.food.until > now ? { id: p.food.id, ms: Math.round(p.food.until - now) } : null };
+  }
+  sendBuffs(p, now) { p.send({ t: 'buffs', ...this.buffsOf(p, now) }); }
+
+  // your next 'mark' hits do extra damage; returns the bonus (0.3 = +30%) and uses one hit up
+  takeMark(p, now) {
+    const b = p.buffs.find((x) => x.stat === 'mark' && x.until > now && x.hits > 0);
+    if (!b) return 0;
+    b.hits--;
+    if (b.hits <= 0) { p.buffs = p.buffs.filter((x) => x !== b); this.sendBuffs(p, now); }
+    return b.value;
+  }
+
+  cancelSpell(p, why) {
+    if (!p.spell) return;
+    p.spell = null;
+    p.send({ t: 'scancel' });
+    if (why) this.fail(p, why);
+  }
+
+  onSkill(p, m) {
+    if (!SKILL_KEYS.includes(m.k)) return;
+    const now = this.now();
+    if (p.mounted) return this.fail(p, 'You cannot cast while riding');
+    if (p.gather || p.spell) return this.fail(p, p.spell ? 'Already casting' : 'You are busy');
+    const id = skillIdsFor(p.inv.eq)[m.k];
+    const sk = id && SKILLS[id];
+    if (!sk) return;
+    if (now < p.gcdUntil) return;
+    if (now < (p.cds[id] || 0)) return this.fail(p, sk.n + ' is not ready yet');
+    if (p.mana < sk.mana) return this.fail(p, 'Not enough mana');
+    if (isNum(m.r)) p.r = clamp(m.r, 10);
+    if (sk.cast > 0) {
+      p.spell = { id, key: m.k, start: now, dur: sk.cast, x: p.x, z: p.z };
+      p.gcdUntil = now + CFG.GCD_MS;
+      p.send({ t: 'scast', id, dur: sk.cast });
+      return;
+    }
+    this.castSkill(p, id, sk, now);
+  }
+
+  finishSpell(p, now) {
+    const sp = p.spell;
+    p.spell = null;
+    const sk = SKILLS[sp.id];
+    if (!sk || skillIdsFor(p.inv.eq)[sp.key] !== sp.id) return p.send({ t: 'scancel' });
+    if (p.mana < sk.mana) { p.send({ t: 'scancel' }); return this.fail(p, 'Not enough mana'); }
+    this.castSkill(p, sp.id, sk, now);
+  }
+
+  castSkill(p, id, sk, now) {
+    p.mana -= sk.mana;
+    p.cds[id] = now + sk.cd;
+    p.gcdUntil = now + CFG.GCD_MS;
+    let buffed = false;
+    for (const e of sk.effects || []) {
+      if (e.kind === 'damage') this.fxDamage(p, e, now);
+      else if (e.kind === 'heal') this.fxHeal(p, e, now);
+      else if (e.kind === 'buff') buffed = this.fxBuff(p, id, e, now) || buffed;
+      else if (e.kind === 'dash') this.fxDash(p, e);
+    }
+    this.sendMana(p);
+    p.send({ t: 'cd', id, ms: sk.cd });
+    if (buffed) this.sendBuffs(p, now);
+    this.broadcastNear(p.x, p.z, 60, { t: 'skfx', by: p.id, id, r: round2(p.r) });
+  }
+
+  fxDamage(p, e, now) {
+    const wp = weaponOf(p.inv.eq);
+    const fx = Math.sin(p.r), fz = Math.cos(p.r);
+    const range = (isNum(e.range) ? e.range : wp.reach) + 0.6;
+    const circle = e.shape === 'circle';
+    const cone = isNum(e.cone) ? e.cone : 0.3;
+    const hit = [];
+    for (const rb of this.rabbits.values()) {
+      if (rb.dead) continue;
+      const dx = rb.x - p.x, dz = rb.z - p.z, d = Math.hypot(dx, dz);
+      if (d > range) continue;
+      if (!circle && (dx * fx + dz * fz) / Math.max(d, 0.001) < cone) continue;
+      hit.push({ rb, d });
+    }
+    hit.sort((a, b) => a.d - b.d);
+    const base = wp.dmg * p.dmgMult(now) * (isNum(e.mult) ? e.mult : 1);
+    for (const { rb } of hit.slice(0, e.max > 0 ? e.max : hit.length)) {
+      this.damageRabbit(rb, Math.max(1, Math.round(base * (1 + this.takeMark(p, now)))), p, now, wp.id, false);
+    }
+  }
+
+  fxHeal(p, e, now) {
+    const total = isNum(e.amount) ? e.amount : (isNum(e.pct) ? e.pct * p.maxHp : 0);
+    if (total <= 0) return;
+    if (e.over > 0) {
+      p.hots.push({ perSec: total / e.over, until: now + e.over * 1000 });
+      return;
+    }
+    p.hp = Math.min(p.maxHp, p.hp + total);
+    p.send({ t: 'heal', d: Math.round(total) });
+  }
+
+  fxBuff(p, id, e, now) {
+    if (!SKILL_STATS.includes(e.stat) || !isNum(e.value) || !(e.dur > 0)) return false;
+    p.buffs = p.buffs.filter((b) => !(b.id === id && b.stat === e.stat)); // casting it again refreshes it
+    p.buffs.push({ id, stat: e.stat, value: e.value, until: now + e.dur, hits: e.hits > 0 ? e.hits : 1 });
+    return true;
+  }
+
+  fxDash(p, e) {
+    const dist2 = isNum(e.dist) ? e.dist : 0;
+    const nx = p.x + Math.sin(p.r) * dist2, nz = p.z + Math.cos(p.r) * dist2;
+    const sw = sweep(this.world, (k) => !this.isDepleted(k), p.x, p.z, nx, nz);
+    p.x = sw.blocked ? sw.x : nx;
+    p.z = sw.blocked ? sw.z : nz;
+    p.y = Math.max(0.13, this.world.hgt(p.x, p.z));
+    p.send({ t: 'pos', x: round2(p.x), z: round2(p.z) });
+  }
+
+  // per-player, every tick: mana regen, spell progress, buff / HoT / food expiry
+  tickMagic(p, dt, now) {
+    if (p.spell) {
+      if (dist(p.x, p.z, p.spell.x, p.spell.z) > CFG.SPELL_MOVE_CANCEL) this.cancelSpell(p, 'Cast interrupted');
+      else if (now - p.spell.start >= p.spell.dur) this.finishSpell(p, now);
+    }
+    if (p.mana < p.maxMana) p.mana = Math.min(p.maxMana, p.mana + p.manaRegen() * dt);
+    if (p.hots.length) p.hots = p.hots.filter((h) => h.until > now);
+    if (p.buffs.length) {
+      const live = p.buffs.filter((b) => b.until > now && !(b.stat === 'shield' && b.value <= 0));
+      if (live.length !== p.buffs.length) { p.buffs = live; this.sendBuffs(p, now); }
+    }
+    if (p.food && p.food.until <= now) {
+      p.food = null;
+      p.recalc();
+      this.toast(p, 'Your food buff wore off');
+      this.sendBuffs(p, now);
+      this.sendMana(p);
+      p.send({ t: 'st', st: this.statsOf(p) });
+      p.dirty = true;
+    }
+  }
+
+  // Potion and food buttons. The server checks everything, so a modified page cannot drink faster.
+  onUse(p, m) {
+    if (!STACK_SLOTS.includes(m.slot)) return;
+    const it = p.inv.eq[m.slot];
+    if (!it) return this.fail(p, m.slot === 'potion' ? 'No potion equipped' : 'No food equipped');
+    const now = this.now();
+    if (m.slot === 'potion') {
+      const def = POTIONS[it.id];
+      if (!def) return;
+      if (now < p.potionReadyAt) return this.fail(p, 'Potion is not ready yet');
+      const hp = def.heal || def.healPct, mp = def.mana;
+      const hpFull = p.hp >= p.maxHp - 0.5, mpFull = p.mana >= p.maxMana - 0.5;
+      if ((!hp || hpFull) && (!mp || mpFull)) return this.fail(p, hp && !mp ? 'Your health is already full' : mp && !hp ? 'Your mana is already full' : 'You are already full');
+      if (hp) {
+        const amt = def.heal || def.healPct * p.maxHp;
+        p.hp = Math.min(p.maxHp, p.hp + amt);
+        p.send({ t: 'heal', d: Math.round(amt) });
+      }
+      if (mp) { p.mana = Math.min(p.maxMana, p.mana + mp); this.sendMana(p); }
+      const cd = isNum(def.cd) ? def.cd : CFG.POTION_CD_MS;
+      p.potionReadyAt = now + cd;
+      p.send({ t: 'cd', id: 'potion', ms: cd });
+    } else {
+      const def = FOODS[it.id];
+      if (!def) return;
+      p.food = { id: it.id, until: now + CFG.FOOD_MS };
+      p.recalc();
+      this.toast(p, 'You ate ' + ITEMS[it.id].n + ' — buff for ' + CFG.FOOD_MS / 60000 + ' minutes');
+      this.sendBuffs(p, now);
+      this.sendMana(p);
+    }
+    it.n--;
+    if (it.n <= 0) p.inv.eq[m.slot] = null;
+    this.sendInv(p);
   }
 
   // ------------------------------------------------------------ chat
@@ -487,6 +686,16 @@ export class Room {
   }
 
   damagePlayer(p, amount, now, by = null) {
+    if (p.hasBuff('invuln', now)) return p.send({ t: 'hurt', d: 0, by });
+    amount *= 1 - p.damageReduction(now);
+    const sh = p.buffs.find((b) => b.stat === 'shield' && b.until > now && b.value > 0);
+    if (sh) { // a shield soaks damage before HP does
+      const soak = Math.min(sh.value, amount);
+      sh.value -= soak;
+      amount -= soak;
+      if (sh.value <= 0) { p.buffs = p.buffs.filter((b) => b !== sh); this.sendBuffs(p, now); }
+      if (amount <= 0) return p.send({ t: 'hurt', d: 0, by });
+    }
     p.hp -= amount;
     p.lastDamageT = now;
     if (p.gather && p.gather.kind === 'mount') this.cancelGather(p); // a bite interrupts the donkey summon
@@ -517,8 +726,12 @@ export class Room {
 
     for (const p of this.players.values()) {
       if (now - p.lastDamageT > CFG.REGEN_COMBAT_LOCK && p.hp < p.maxHp) {
-        p.hp = Math.min(p.maxHp, p.hp + p.maxHp * CFG.REGEN_PER_SEC * dt);
+        p.hp = Math.min(p.maxHp, p.hp + p.maxHp * CFG.REGEN_PER_SEC * p.regenMult() * dt);
       }
+      if (p.hp < p.maxHp && p.hots.length) { // heals over time
+        for (const h of p.hots) p.hp = Math.min(p.maxHp, p.hp + h.perSec * dt);
+      }
+      this.tickMagic(p, dt, now);
       if (p.gather && now - p.gather.start > GATHER_STALE_MS) p.gather = null;
       // Donkey HP: a donkey that dropped to 0 is away for 30 s and returns healed; otherwise it heals 0 -> full in 30 s.
       if (p.mountReadyAt > now) p.mountHp = 0;
