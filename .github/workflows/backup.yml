@@ -29,7 +29,7 @@ jobs:
           openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in plain.json -out nwo-backup.enc -pass env:BACKUP_PASSPHRASE
           shred -u plain.json
           ls -l nwo-backup.enc
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ hashFiles('nwo-backup.enc') != '' }}
         with:
           name: nwo-backup-encrypted
