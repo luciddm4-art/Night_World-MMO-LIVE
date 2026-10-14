@@ -85,7 +85,8 @@ function dispose(r) {
   });
 }
 
-export function syncRabbits(list) {
+// Create / update the rabbits in `list`. Returns the set of ids it saw.
+function upsertRabbits(list) {
   const seen = {};
   for (const e of list) {
     seen[e.i] = 1;
@@ -104,9 +105,25 @@ export function syncRabbits(list) {
       setAlert(r, !!e.a);
     }
   }
-  for (const id in S.rabbits) {
-    if (!seen[id]) { dispose(S.rabbits[id]); delete S.rabbits[id]; }
-  }
+  return seen;
+}
+
+function dropRabbit(id) {
+  if (!S.rabbits[id]) return;
+  dispose(S.rabbits[id]);
+  delete S.rabbits[id];
+}
+
+// Full picture: any rabbit not in the list is gone.
+export function syncRabbits(list) {
+  const seen = upsertRabbits(list);
+  for (const id in S.rabbits) if (!seen[id]) dropRabbit(id);
+}
+
+// Protocol 2: only what changed, plus an explicit list of ids that left.
+export function patchRabbits(list, gone) {
+  if (list) upsertRabbits(list);
+  if (gone) for (const id of gone) dropRabbit(id);
 }
 
 export function clearRabbits() {

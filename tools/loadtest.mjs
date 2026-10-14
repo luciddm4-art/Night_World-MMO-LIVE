@@ -16,6 +16,7 @@ import WebSocket from 'ws';
 
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i > 0 && process.argv[i + 1] !== undefined && !process.argv[i + 1].startsWith('--') ? Number(process.argv[i + 1]) : d; };
 const N = arg('players', 40), SECS = arg('seconds', 20), WORLDS = arg('worlds', 1), SPREAD = process.argv.includes('--spread');
+const LEGACY = process.argv.includes('--legacy'); // behave like an old page: full snapshots, no deltas
 const BUDGET_GB = arg('budget-gb', 5); // monthly outbound bandwidth you have (Render's Hobby workspace: 5 GB, check your Billing page)
 const THROTTLE = arg('throttle', 0); // e.g. 0.1 = squeeze the server into 10 % of a core, like Render's free tier (it runs ~10 ms, then is paused ~90 ms)
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,7 +56,7 @@ function bot(i) {
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}`, { headers: { 'x-forwarded-for': `10.0.${(i >> 8) & 255}.${i & 255}` } }); // each bot looks like its own network
   let x = 0, z = 22, r = Math.random() * 6.28;
   const pings = new Map();
-  ws.on('open', () => ws.send(JSON.stringify({ t: 'auth', mode: 'guest', seed, color: '#88aa44' })));
+  ws.on('open', () => ws.send(JSON.stringify({ t: 'auth', mode: 'guest', seed, color: '#88aa44', ...(LEGACY ? {} : { v: 2 }) })));
   ws.on('message', (raw) => {
     stats.bytes += raw.length; stats.msgs++;
     const m = JSON.parse(raw);

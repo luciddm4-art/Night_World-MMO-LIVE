@@ -85,10 +85,12 @@ export class Player {
     };
   }
 
-  view(now = 0) {
+  // `coarse` (protocol 2): the recall countdown is rounded up to whole seconds, so it only changes once a second
+  view(now = 0, coarse = false) {
+    const left = Math.max(0, this.mountReadyAt - now);
     return {
       dh: Math.round(this.mountHp), // donkey HP
-      dr: Math.max(0, Math.round(this.mountReadyAt - now)), // ms until the donkey can be summoned again
+      dr: coarse ? Math.ceil(left / 1000) * 1000 : Math.round(left), // ms until the donkey can be summoned again
       hp: Math.round(this.hp),
       mh: this.maxHp,
       mt: this.mounted ? 1 : 0,

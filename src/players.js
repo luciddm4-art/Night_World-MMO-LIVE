@@ -8,7 +8,8 @@ import { WEAPONS } from '../shared/data.js';
 const HEX = /^#[0-9a-f]{6}$/i;
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-export function syncPlayers(list) {
+// Create / update the players in `list`. Returns the set of ids it saw.
+export function upsertPlayers(list) {
   const seen = {};
   for (const e of list) {
     seen[e.id] = 1;
@@ -31,14 +32,27 @@ export function syncPlayers(list) {
     }
     o.m = !!e.m;
   }
-  for (const k in S.others) {
-    if (!seen[k]) {
-      const o = S.others[k];
-      if (o.donkey) scene.remove(o.donkey);
-      disposeFig(scene, o.g);
-      delete S.others[k];
-    }
-  }
+  return seen;
+}
+
+function dropPlayer(k) {
+  const o = S.others[k];
+  if (!o) return;
+  if (o.donkey) scene.remove(o.donkey);
+  disposeFig(scene, o.g);
+  delete S.others[k];
+}
+
+// Full picture: whoever is not in the list is gone.
+export function syncPlayers(list) {
+  const seen = upsertPlayers(list);
+  for (const k in S.others) if (!seen[k]) dropPlayer(k);
+}
+
+// Protocol 2: only what changed, plus an explicit list of ids that left.
+export function patchPlayers(list, gone) {
+  if (list) upsertPlayers(list);
+  if (gone) for (const k of gone) dropPlayer(k);
 }
 
 export function clearPlayers() {

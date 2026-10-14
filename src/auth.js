@@ -33,7 +33,7 @@ function showForm(msg) {
 }
 function sendAuth(extra) {
   busy(true);
-  send({ t: 'auth', seed: SEED, color: myColor(), ...extra });
+  send({ t: 'auth', v: 2, seed: SEED, color: myColor(), ...extra });
 }
 
 export function logout() {
