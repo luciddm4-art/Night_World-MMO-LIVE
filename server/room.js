@@ -157,6 +157,7 @@ export class Room {
   onPos(p, m) {
     if (!isNum(m.x) || !isNum(m.z)) return;
     const now = this.now();
+    if (p.tpUntil && now < p.tpUntil) return; // just teleported: ignore the packets that were already on their way
     const x = clamp(m.x, 1e6), z = clamp(m.z, 1e6);
     if (isNum(m.r)) p.r = clamp(m.r, 10);
 
@@ -526,6 +527,20 @@ export class Room {
     p.buffs = p.buffs.filter((b) => !(b.id === id && b.stat === e.stat)); // casting it again refreshes it
     p.buffs.push({ id, stat: e.stat, value: e.value, until: now + e.dur, hits: e.hits > 0 ? e.hits : 1 });
     return true;
+  }
+
+  // Admin teleport: puts the player at (x, z) at once. Returns the spot, or null if it is outside the map limit.
+  teleport(p, x, z) {
+    if (!isNum(x) || !isNum(z) || Math.abs(x) > CFG.TP_LIMIT || Math.abs(z) > CFG.TP_LIMIT) return null;
+    const now = this.now();
+    this.cancelGather(p);
+    p.x = x; p.z = z;
+    p.y = Math.max(0.13, this.world.hgt(x, z));
+    p.moveBudget = 0;
+    p.lastPosT = now;
+    p.tpUntil = now + 600;
+    p.send({ t: 'pos', x: round2(x), z: round2(z) });
+    return { x: round2(x), z: round2(z) };
   }
 
   fxDash(p, e) {

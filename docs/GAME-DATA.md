@@ -65,7 +65,12 @@ There is deliberately no speed buff (boots are the only speed bonus).
 Then make the item obtainable: add a recipe to `RECIPES` in `shared/data.js` (the Alchemy and Kitchen stations are
 planned; until then use the admin command below to test).
 
-## Try things out: `/give`
+## Try things out: `/teleport` and `/give`
+
+Admins can also type `/teleport <x> <z>` (or `/tp`), `/teleport <player name>`, `/teleport town` or `/teleport portal`
+to jump anywhere in their current world (up to ±6000 units, `CFG.TP_LIMIT`). Other players get "Unknown command".
+
+### `/give`
 
 Accounts listed in the server's `ADMINS` setting can type `/give <item id> [amount]` in chat to put an item in
 their own bag (`/give hearty_stew 5`). Then tap it in the inventory to equip it.
