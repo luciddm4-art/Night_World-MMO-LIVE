@@ -15,3 +15,10 @@ safe zone and what is solid all come from it, on the server and in the browser.
 
 Scenery: `src/village.js` (plaza, lamp posts, sign, portal). Not built yet: crafting stations, Market, Bank, ruins and
 camps, bridges, day and night. Crafting stations only exist in the start world's Crafting Hall for now.
+
+## Graphics
+
+Settings → Graphics: **Low-poly (smooth)** is the default, **Pixel (retro)** is the old blocky look (changing it reloads the page).
+Low-poly means: no pixel upscaling, anti-aliased edges, flat-coloured terrain triangles (colour by height, slope and a little chance),
+faceted people, animals and trees, soft blob shadows. The picture sharpness adjusts itself to the frame rate
+(`adaptQuality` in `src/scene.js`, between half and the screen's own density, never above 1.5).

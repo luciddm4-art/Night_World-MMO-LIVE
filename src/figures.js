@@ -1,7 +1,8 @@
 // Meshes for people, animals and the donkey, plus name tags.
-import { T } from './scene.js';
+import { T, smooth } from './scene.js';
+import { REALM } from './config.js';
 
-export function mkFig(col) {
+function mkFigBlocky(col) {
   const g = new T.Group(), m = new T.MeshLambertMaterial({ color: col });
   const torso = new T.Group();
   g.add(torso);
@@ -33,6 +34,91 @@ export function mkFig(col) {
   Object.assign(g.userData, { legL, legR, armL, armR, sl, t: -9999, phase: 0, phase0: Math.random() * 6.283 });
   return g;
 }
+
+// ================= low-poly models (the default look): faceted shapes, flat shading, a soft blob shadow =================
+const lm = (c) => new T.MeshLambertMaterial({ color: c, flatShading: true });
+const ico = (r, sx, sy, sz, mat, x = 0, y = 0, z = 0) => { const m = new T.Mesh(new T.IcosahedronGeometry(r, 0), mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); return m; };
+const eyeMat = new T.MeshBasicMaterial({ color: 0x1b1b22 });
+const shadowGeo = new T.CircleGeometry(1, 12); shadowGeo.rotateX(-Math.PI / 2);
+const shadowMat = new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const blob = (r, x = 0, z = 0) => { const m = new T.Mesh(shadowGeo, shadowMat); m.scale.set(r, 1, r); m.position.set(x, 0.05, z); return m; };
+
+function mkFigPoly(col) {
+  const g = new T.Group();
+  const cloth = lm(col), pants = lm(new T.Color(col).multiplyScalar(0.55)), skin = lm(0xd2ae8c), hair = lm(0x3a2a1c), boot = lm(0x2b2420);
+  const torso = new T.Group();
+  g.add(torso);
+  g.userData.torso = torso;
+  const body = new T.Mesh(new T.CylinderGeometry(0.44, 0.33, 1.1, 6), cloth);
+  body.scale.z = 0.62; body.rotation.y = Math.PI / 6; body.position.y = 1.15;
+  const belt = new T.Mesh(new T.CylinderGeometry(0.35, 0.36, 0.14, 6), lm(0x3a2c22));
+  belt.scale.z = 0.66; belt.rotation.y = Math.PI / 6; belt.position.y = 0.72;
+  torso.add(body, belt);
+  torso.add(ico(0.29, 1, 1.08, 1, skin, 0, 2.02, 0)); // head
+  torso.add(ico(0.31, 1, 0.6, 1.02, hair, 0, 2.17, -0.02)); // hair
+  torso.add(new T.Mesh(new T.BoxGeometry(0.07, 0.08, 0.05), eyeMat)); torso.children[torso.children.length - 1].position.set(-0.1, 2.04, 0.26);
+  torso.add(new T.Mesh(new T.BoxGeometry(0.07, 0.08, 0.05), eyeMat)); torso.children[torso.children.length - 1].position.set(0.1, 2.04, 0.26);
+  const legGeo = new T.CylinderGeometry(0.14, 0.1, 0.7, 5); legGeo.translate(0, -0.35, 0);
+  const footGeo = new T.BoxGeometry(0.2, 0.12, 0.32); footGeo.translate(0, -0.66, 0.05);
+  const legL = new T.Mesh(legGeo, pants); legL.position.set(-0.2, 0.7, 0); legL.add(new T.Mesh(footGeo, boot)); g.add(legL);
+  const legR = new T.Mesh(legGeo, pants); legR.position.set(0.2, 0.7, 0); legR.add(new T.Mesh(footGeo, boot)); g.add(legR);
+  const armGeo = new T.CylinderGeometry(0.13, 0.09, 0.65, 5); armGeo.translate(0, -0.32, 0);
+  const armL = new T.Mesh(armGeo, cloth); armL.position.set(-0.5, 1.6, 0); armL.add(ico(0.1, 1, 1, 1, skin, 0, -0.68, 0)); torso.add(armL);
+  const armR = new T.Mesh(armGeo, cloth); armR.position.set(0.5, 1.6, 0); armR.add(ico(0.1, 1, 1, 1, skin, 0, -0.68, 0)); torso.add(armR);
+  const sl = new T.Mesh(
+    new T.RingGeometry(1, 1.9, 16, 1, -Math.PI / 2 - 1, 2),
+    new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: T.DoubleSide, depthWrite: false, fog: false }),
+  );
+  sl.rotation.x = -Math.PI / 2;
+  sl.position.y = 1.2;
+  g.add(sl, blob(0.55));
+  Object.assign(g.userData, { legL, legR, armL, armR, sl, t: -9999, phase: 0, phase0: Math.random() * 6.283 });
+  return g;
+}
+
+function mkRabbitPoly() {
+  const fur = REALM.id === 't2' ? 0xdfe5ec : 0x8a6a4a; // snow hares in Frostfall
+  const g = new T.Group(), m = new T.MeshLambertMaterial({ color: fur, flatShading: true });
+  const b = ico(0.3, 0.95, 0.78, 1.35, m, 0, 0.26, 0); g.add(b);
+  g.add(ico(0.19, 1, 1, 1.05, m, 0, 0.42, -0.42));
+  for (const sx of [-1, 1]) {
+    const e = new T.Mesh(new T.ConeGeometry(0.065, 0.36, 4), m);
+    e.position.set(sx * 0.08, 0.7, -0.45); e.rotation.z = -sx * 0.18;
+    g.add(e);
+    const eye = new T.Mesh(new T.BoxGeometry(0.04, 0.04, 0.03), eyeMat); eye.position.set(sx * 0.1, 0.46, -0.58); g.add(eye);
+  }
+  g.add(ico(0.09, 1, 1, 1, new T.MeshLambertMaterial({ color: 0xf2f2ee, flatShading: true }), 0, 0.3, 0.4));
+  g.add(blob(0.45));
+  g.userData.body = b;
+  g.userData.mat = m;
+  return g;
+}
+
+function mkDonkeyPoly() {
+  const g = new T.Group(), m = lm(0x6a4a3a), light = lm(0x9a8574), dark = lm(0x3a2a22);
+  g.add(ico(0.5, 0.64, 0.66, 1.25, m, 0, 0.72, 0)); // body
+  const neck = new T.Mesh(new T.CylinderGeometry(0.14, 0.21, 0.55, 5), m); neck.position.set(0, 1.0, -0.58); neck.rotation.x = -0.6; g.add(neck);
+  g.add(ico(0.2, 0.85, 0.85, 1.35, m, 0, 1.2, -0.85)); // head
+  g.add(ico(0.13, 0.9, 0.8, 1.2, light, 0, 1.11, -1.08)); // snout
+  for (const sx of [-1, 1]) {
+    const e = new T.Mesh(new T.ConeGeometry(0.07, 0.34, 4), m); e.position.set(sx * 0.11, 1.45, -0.8); e.rotation.z = -sx * 0.2; g.add(e);
+    const eye = new T.Mesh(new T.BoxGeometry(0.04, 0.05, 0.04), eyeMat); eye.position.set(sx * 0.15, 1.24, -0.92); g.add(eye);
+  }
+  const mane = new T.Mesh(new T.BoxGeometry(0.06, 0.3, 0.55), dark); mane.position.set(0, 1.28, -0.62); mane.rotation.x = -0.6; g.add(mane);
+  const blanket = new T.Mesh(new T.BoxGeometry(0.66, 0.07, 0.55), lm(0xa8473a)); blanket.position.set(0, 1.08, 0.05); g.add(blanket);
+  const legGeo = new T.CylinderGeometry(0.085, 0.06, 0.6, 5); legGeo.translate(0, -0.3, 0);
+  [[-0.2, -0.45], [0.2, -0.45], [-0.2, 0.45], [0.2, 0.45]].forEach((p) => {
+    const l = new T.Mesh(legGeo, m); l.position.set(p[0], 0.6, p[1]); g.add(l);
+    const hoof = new T.Mesh(new T.CylinderGeometry(0.07, 0.08, 0.08, 5), dark); hoof.position.y = -0.58; l.add(hoof);
+  });
+  const tail = new T.Mesh(new T.ConeGeometry(0.06, 0.5, 4), dark); tail.position.set(0, 0.7, 0.68); tail.rotation.x = 2.7; g.add(tail);
+  g.add(blob(0.8, 0, 0));
+  return g;
+}
+
+export const mkFig = (col) => (smooth ? mkFigPoly(col) : mkFigBlocky(col));
+export const mkRabbit = () => (smooth ? mkRabbitPoly() : mkRabbitBlocky());
+export const mkDonkey = () => (smooth ? mkDonkeyPoly() : mkDonkeyBlocky());
 
 // ---- held weapons: small low-poly models parented to the right arm, so they swing with it
 const metal = () => new T.MeshLambertMaterial({ color: 0xcfd6e0 });
@@ -117,7 +203,7 @@ export function upS(g, now) {
   m.scale.setScalar(0.8 + 0.5 * Math.min(1, u));
 }
 
-export function mkRabbit() {
+function mkRabbitBlocky() {
   const g = new T.Group(), m = new T.MeshLambertMaterial({ color: 0x8a6a4a });
   const b = new T.Mesh(new T.BoxGeometry(0.5, 0.35, 0.7), m); b.position.y = 0.22; g.add(b);
   const h = new T.Mesh(new T.BoxGeometry(0.3, 0.3, 0.35), m); h.position.set(0, 0.38, -0.45); g.add(h);
@@ -128,7 +214,7 @@ export function mkRabbit() {
   return g;
 }
 
-export function mkDonkey() {
+function mkDonkeyBlocky() {
   const g = new T.Group(), m = new T.MeshLambertMaterial({ color: 0x6a4a3a });
   const body = new T.Mesh(new T.BoxGeometry(0.55, 0.5, 1.1), m); body.position.y = 0.65; g.add(body);
   const head = new T.Mesh(new T.BoxGeometry(0.35, 0.35, 0.5), m); head.position.set(0, 1, -0.75); g.add(head);

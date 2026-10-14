@@ -1,7 +1,7 @@
 // Wires everything together and runs the render loop.
 import { CFG, weaponIdOf } from '../shared/data.js';
 import { S } from './state.js';
-import { T, scene, cam, renderer, onResize, sky } from './scene.js';
+import { T, scene, cam, renderer, onResize, sky, adaptQuality } from './scene.js';
 import { REALM } from './config.js';
 // The start world builds its Crafting Hall and town; Frostfall builds its own village (both are pure scenery)
 if (REALM.id === 't2') { // the caption names the world you are in
@@ -299,6 +299,7 @@ function loop() {
   updateFloaters(now);
 
   renderer.render(scene, cam);
+  adaptQuality(dt * 1000, now);
   requestAnimationFrame(loop);
 }
 
