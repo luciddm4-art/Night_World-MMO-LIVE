@@ -1,5 +1,5 @@
 // Renderer, camera, lights, sky. THREE comes from vendor/three.min.js (global).
-import { SEED } from './config.js';
+import { SEED, REALM } from './config.js';
 
 export const T = window.THREE;
 
@@ -18,8 +18,10 @@ renderer.setSize(Math.floor(view.W / view.PX), Math.floor(view.H / view.PX), fal
 document.body.appendChild(renderer.domElement);
 
 export const scene = new T.Scene();
-scene.background = new T.Color(0x121830);
-scene.fog = new T.FogExp2(0x151b30, 0.016);
+const FROSTY = REALM.id === 't2';
+// Frostfall is a pale, cold world: lighter sky and fog, snow-blue light (the day/night cycle will take over these later)
+scene.background = new T.Color(FROSTY ? 0x2a3753 : 0x121830);
+scene.fog = new T.FogExp2(FROSTY ? 0x30405d : 0x151b30, FROSTY ? 0.0095 : 0.016);
 export const cam = new T.PerspectiveCamera(70, view.W / view.H, 0.1, 500);
 
 export function tex(base, bricks, rep) {
@@ -47,14 +49,14 @@ export function tex(base, bricks, rep) {
   return t;
 }
 
-const amb = new T.AmbientLight(0x3a4a7a, 0.9);
+const amb = new T.AmbientLight(FROSTY ? 0xaab6d4 : 0x3a4a7a, FROSTY ? 1.0 : 0.9);
 scene.add(amb);
 const moonDir = new T.Vector3(-40, 60, -80);
-const dl = new T.DirectionalLight(0x8aa0d8, 0.55);
+const dl = new T.DirectionalLight(FROSTY ? 0xdfe8f8 : 0x8aa0d8, FROSTY ? 0.75 : 0.55);
 dl.position.copy(moonDir);
 scene.add(dl);
 // brightness setting scales these two
-export const lights = { amb, dir: dl, ambBase: 0.9, dirBase: 0.55 };
+export const lights = { amb, dir: dl, ambBase: FROSTY ? 1.0 : 0.9, dirBase: FROSTY ? 0.75 : 0.55 };
 const moon = new T.Mesh(new T.SphereGeometry(14, 8, 6), new T.MeshBasicMaterial({ color: 0xdfe3ea, fog: false }));
 moon.position.copy(moonDir).multiplyScalar(3);
 // moon and stars live in a group that follows the camera, so they stay put in the sky however far you walk

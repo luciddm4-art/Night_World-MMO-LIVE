@@ -1,7 +1,9 @@
 import { S } from './state.js';
 import { hgt } from './terrain.js';
 import { getDonkey } from './mount.js';
-import { PORTAL, TOWN } from '../shared/data.js';
+import { TOWN } from '../shared/data.js';
+import { REALM } from './config.js';
+import { FROST } from '../shared/realm.js';
 
 // The minimap is a small round canvas in the corner. Tap it and it opens large (a bigger area, drawn sharper);
 // tap again, tap the dark backdrop, or press Esc/M to close.
@@ -26,7 +28,16 @@ export function toggleMap() { setMapBig(!big); }
 cv.addEventListener('click', toggleMap);
 back.addEventListener('click', () => setMapBig(false));
 
+// Frostfall: blue ice, white snow, grey rock and white peaks on the mountain ring
+function frostColour(h) {
+  if (h <= 0.3) return 'rgb(118,160,205)';
+  if (h < 40) { const v = h / 40; return 'rgb(' + ((226 - v * 40) | 0) + ',' + ((234 - v * 30) | 0) + ',' + ((244 - v * 20) | 0) + ')'; }
+  const v = Math.min(1, (h - 40) / 90);
+  return 'rgb(' + ((120 + v * 100) | 0) + ',' + ((124 + v * 100) | 0) + ',' + ((134 + v * 100) | 0) + ')';
+}
+
 export function drawMap() {
+  const PORTAL = REALM.portal;
   const P = S.P;
   const { size, ms, rng } = big ? MODES.big : MODES.small;
   const k = size / 96; // everything below is laid out for a 96 px canvas and scaled by k
@@ -34,7 +45,7 @@ export function drawMap() {
   for (let i = 0; i < ms; i++) {
     for (let j = 0; j < ms; j++) {
       const h = hgt(P.x + (i / ms - 0.5) * 2 * rng, P.z + (j / ms - 0.5) * 2 * rng), v = Math.min(1, h / 30);
-      mg.fillStyle = h <= 0.3 ? 'rgb(36,60,46)' : 'rgb(' + ((40 + v * 150) | 0) + ',' + ((70 + v * 110) | 0) + ',' + ((48 + v * 130) | 0) + ')';
+      mg.fillStyle = REALM.id === 't2' ? frostColour(h) : h <= 0.3 ? 'rgb(36,60,46)' : 'rgb(' + ((40 + v * 150) | 0) + ',' + ((70 + v * 110) | 0) + ',' + ((48 + v * 130) | 0) + ')';
       mg.fillRect(i * cl, j * cl, cl + 0.5, cl + 0.5);
     }
   }
@@ -43,8 +54,15 @@ export function drawMap() {
   // the town wall (a square) and, pinned to the map edge when it is far away, the portal
   mg.strokeStyle = 'rgba(242,211,74,.75)';
   mg.lineWidth = 1.5 * k;
-  const a = mp(-TOWN.half, -TOWN.half), b = mp(TOWN.half, TOWN.half);
-  mg.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  if (REALM.id === 't2') { // the map edge (the invisible wall) in red
+    mg.strokeStyle = 'rgba(255,90,70,.85)';
+    const w = FROST.wall, e1 = mp(-w, -w), e2 = mp(w, w);
+    mg.strokeRect(e1[0], e1[1], e2[0] - e1[0], e2[1] - e1[1]);
+    mg.strokeStyle = 'rgba(242,211,74,.75)';
+  } else {
+    const a = mp(-TOWN.half, -TOWN.half), b = mp(TOWN.half, TOWN.half);
+    mg.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  }
   const pp = mp(PORTAL.x, PORTAL.z);
   let qx = pp[0], qy = pp[1];
   const far = Math.hypot(qx - mid, qy - mid) > mid * 0.83;

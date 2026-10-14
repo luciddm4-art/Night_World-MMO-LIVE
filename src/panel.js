@@ -1,4 +1,5 @@
 import { ITEMS, RECIPES, WORLDS, STATIONS, STATION_Z, STATION_RANGE, FAMILIES, normalizeSeed } from '../shared/data.js';
+import { REALM } from './config.js';
 import { S } from './state.js';
 import { send } from './net.js';
 import { say } from './ui.js';
@@ -58,10 +59,15 @@ export function renderPanel() {
     });
     h += '<button class="b x" data-a="close">Close</button>';
   } else if (panelState.type === 'travel') {
-    h += '<h3>Travel Planner</h3><p>Onward. There is no way back.</p>';
-    WORLDS.forEach((w) => {
-      h += '<button class="b" data-a="t:' + w.seed + '"><span>' + w.name + ' <small>· ' + w.tag + '</small></span><span>travel</span></button>';
-    });
+    if (REALM.id === 't2') { // Frostfall's portal leads home
+      h += '<h3>Travel Planner</h3><p>The portal remembers the way home.</p>';
+      h += '<button class="b" data-a="t:7"><span>Night World <small>· Tier 1 · the start world</small></span><span>travel</span></button>';
+    } else {
+      h += '<h3>Travel Planner</h3><p>Onward. There is no way back.</p>';
+      WORLDS.forEach((w) => {
+        h += '<button class="b" data-a="t:' + w.seed + '"><span>' + w.name + ' <small>· ' + w.tag + '</small></span><span>travel</span></button>';
+      });
+    }
     // (no free-form seed box: the public server only opens the listed worlds)
     h += '<button class="b x" data-a="close" style="margin-top:6px">Close</button>';
   }

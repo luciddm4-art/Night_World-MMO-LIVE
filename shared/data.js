@@ -22,7 +22,6 @@ export const CFG = {
   RIDE_SPEED: 8.4, // units / second on the donkey: 40% faster than walking (boots do not add to it)
   GALLOP_MULT: 1.1, // after riding and moving for GALLOP_AFTER_MS the donkey gallops: +10% speed
   GALLOP_AFTER_MS: 3000,
-  TP_LIMIT: 6000, // /teleport refuses coordinates further out than this
   MOUNT_CAST_MS: 5000, // summoning the donkey takes a 5 second cast
   MOUNT_HP: 200, // rabbit bites hit the donkey instead of you while you ride
   MOUNT_RECALL_MS: 30000, // after the donkey drops to 0 HP it is gone this long
@@ -166,6 +165,7 @@ export const WORLDS = [
   { name: 'Frost', seed: 100, tag: 'cold pale stone' },
   { name: 'Ember', seed: 999, tag: 'red earth & dust' },
   { name: 'Hollow', seed: 2025, tag: 'silent dark woods' },
+  { name: 'Frostfall', seed: 5001, tag: 'Tier 2 · snow, ice & mountains', tier: 2 },
 ];
 
 // Spawn hall layout. Crafting stations stand at z = STATION_Z.
