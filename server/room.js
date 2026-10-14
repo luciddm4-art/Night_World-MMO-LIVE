@@ -11,6 +11,7 @@ import { sweep, isFree } from '../shared/collision.js';
 import * as Inv from '../shared/inventory.js';
 import { round2 } from './player.js';
 import { encodeRabbit } from '../shared/wire.js';
+import { Trades } from './trade.js';
 
 const SLACK = 2.0; // positional tolerance for network lag (units)
 const STATION_SLACK = 1.0;
@@ -39,6 +40,7 @@ export class Room {
     this.rng = rng;
     this.world = createWorld(seed);
     this.players = new Map(); // id -> Player
+    this.trades = new Trades(this);
     this.depleted = new Map(); // node/tree id -> {qty, readyAt}
     this.rabbits = new Map(); // id -> rabbit
     this.deadUntil = new Map(); // rabbit id -> respawn time
@@ -76,6 +78,7 @@ export class Room {
   }
 
   removePlayer(p) {
+    this.trades.cancel(p, p.name + ' left the game');
     this.players.delete(p.id);
     p.gather = null;
     if (this.players.size === 0) this.emptySince = this.now();
@@ -89,7 +92,7 @@ export class Room {
       seed: this.seed,
       you: {
         x: round2(p.x), z: round2(p.z), r: round2(p.r), c: p.color,
-        ...p.view(this.now()), inv: p.inv, st: this.statsOf(p),
+        ...p.view(this.now()), inv: p.inv, st: this.statsOf(p), coins: p.coins,
         mana: { v: round1(p.mana), max: p.maxMana, rate: p.manaRegen() },
         buffs: this.buffsOf(p, this.now()),
       },
@@ -123,7 +126,7 @@ export class Room {
   fail(p, m) { p.send({ t: 'fail', m }); }
   sendInv(p) {
     p.dirty = true;
-    p.send({ t: 'inv', inv: p.inv, st: this.statsOf(p), hp: Math.round(p.hp) });
+    p.send({ t: 'inv', inv: p.inv, st: this.statsOf(p), hp: Math.round(p.hp), c: p.coins });
   }
 
   handle(p, m) {
@@ -143,6 +146,9 @@ export class Room {
       case 'skill': return this.onSkill(p, m);
       case 'use': return this.onUse(p, m);
       case 'scancel': return this.cancelSpell(p);
+      case 'inspect': return this.onInspect(p, m);
+      case 'tg': return this.onTarget(p, m);
+      case 'trade': return this.onTrade(p, m);
       default: return undefined;
     }
   }
@@ -589,6 +595,34 @@ export class Room {
     it.n--;
     if (it.n <= 0) p.inv.eq[m.slot] = null;
     this.sendInv(p);
+  }
+
+  // ------------------------------------------------------------ targets, inspecting, trading
+  // Tapping a player marks them as your target; the page asks for their HP now and then ('tg', tiny)
+  onTarget(p, m) {
+    const t = this.players.get(String(m.id));
+    if (!t) return p.send({ t: 'tg', id: String(m.id), gone: 1 });
+    p.send({ t: 'tg', id: t.id, hp: Math.round(t.hp), mh: t.maxHp });
+  }
+  // The Inspect button: what another player wears (equipment only, never their bag or coins)
+  onInspect(p, m) {
+    const t = this.players.get(String(m.id));
+    if (!t) return this.fail(p, 'That player is not here');
+    const eq = {};
+    for (const s of EQUIP_SLOTS) if (t.inv.eq[s]) eq[s] = { id: t.inv.eq[s].id, n: t.inv.eq[s].n };
+    p.send({ t: 'inspected', id: t.id, name: t.name, hp: Math.round(t.hp), mh: t.maxHp, mt: t.mounted ? 1 : 0, eq, st: this.statsOf(t) });
+  }
+  onTrade(p, m) {
+    switch (m.a) {
+      case 'req': return this.trades.request(p, m);
+      case 'accept': return this.trades.respond(p, true);
+      case 'decline': return this.trades.respond(p, false);
+      case 'offer': return this.trades.offer(p, m);
+      case 'lock': return this.trades.lock(p, m);
+      case 'unlock': return this.trades.unlock(p);
+      case 'cancel': return this.trades.cancel(p, p.name + ' cancelled the trade');
+      default: return undefined;
+    }
   }
 
   // ------------------------------------------------------------ chat

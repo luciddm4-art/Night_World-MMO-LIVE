@@ -10,6 +10,9 @@ export const S = {
   P: { x: 0, z: -1.5, r: Math.PI, y: 0.13 },
   inv: { eq: Object.fromEntries(EQUIP_SLOTS.map((s) => [s, null])), slots: new Array(CFG.INV_SLOTS).fill(null) },
   st: { hp: CFG.PLAYER_BASE_HP, maxHp: CFG.PLAYER_BASE_HP, dmg: 1, haste: 0, def: 0, speed: 0 },
+  coins: 0, // wallet (the server's number)
+  target: null, // marked player: { id, name, hp, mh }
+  trade: null, // open trade table (server state), see src/trade.js
   mounted: false,
   ride: { t: 0, idle: 0, gallop: false }, // donkey gallop state (shared/gallop.js)
   mountHp: CFG.MOUNT_HP, // donkey HP (server tells us)

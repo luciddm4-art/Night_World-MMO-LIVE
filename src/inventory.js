@@ -1,4 +1,4 @@
-import { CFG, ITEMS, EQUIP_SLOTS, SLOT_LABEL, SLOT_ACCEPTS, ARMOR_STATS, RECIPES, WEAPONS, STATIONS } from '../shared/data.js';
+import { CFG, fmtCoins, ITEMS, EQUIP_SLOTS, SLOT_LABEL, SLOT_ACCEPTS, ARMOR_STATS, RECIPES, WEAPONS, STATIONS } from '../shared/data.js';
 import { sfx } from './audio.js';
 import { S } from './state.js';
 import { send } from './net.js';
@@ -73,6 +73,7 @@ export function renderInv() {
     const n = count(id);
     if (n > 0) parts.push(ITEMS[id].s + ' ' + n);
   });
+  document.getElementById('coins').textContent = 'Coins ' + fmtCoins(S.coins);
   invSum.textContent = parts.length ? '  ' + parts.join('  ') : '';
 }
 

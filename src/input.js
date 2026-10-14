@@ -29,6 +29,7 @@ export function initInput(canvas, cb) {
     if (e.code === 'KeyI' && !e.repeat) cb.toggleInv();
     if (e.code === 'KeyC' && !e.repeat) cb.craft();
     if (e.code === 'KeyM' && !e.repeat) cb.map();
+    if (e.code === 'KeyT' && !e.repeat) cb.target();
     if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { // skills 1-5 (Q W E R D), potion Z, food X
       const si = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(e.code);
       if (si >= 0) cb.skill(si);
@@ -62,7 +63,8 @@ export function initInput(canvas, cb) {
       input.look = null;
       // desktop: a plain left click (no drag) is an attack
       const tap = Math.hypot(e.clientX - look.x0, e.clientY - look.y0) < 6 && performance.now() - look.t0 < 350;
-      if (e.type === 'pointerup' && e.pointerType === 'mouse' && e.button === 0 && tap) cb.attack();
+      if (e.type === 'pointerup' && tap && e.pointerType !== 'mouse') cb.pick(e.clientX, e.clientY); // a finger tap marks a player
+      else if (e.type === 'pointerup' && e.pointerType === 'mouse' && e.button === 0 && tap && !cb.pick(e.clientX, e.clientY)) cb.attack(); // a click on a player marks them, anywhere else attacks
     }
   };
 

@@ -26,28 +26,30 @@
   "./src/courtyard.js": "./src/courtyard.js?v=b5eae813",
   "./src/figures.js": "./src/figures.js?v=fc3de02a",
   "./src/fx.js": "./src/fx.js?v=694afb83",
-  "./src/input.js": "./src/input.js?v=eadbf705",
+  "./src/input.js": "./src/input.js?v=ddd5b16b",
   "./src/interact.js": "./src/interact.js?v=16ced734",
-  "./src/inventory.js": "./src/inventory.js?v=b2a188af",
-  "./src/main.js": "./src/main.js?v=2bd42b2b",
+  "./src/inventory.js": "./src/inventory.js?v=423e468c",
+  "./src/main.js": "./src/main.js?v=b934e9ac",
   "./src/minimap.js": "./src/minimap.js?v=d4b24c56",
   "./src/mount.js": "./src/mount.js?v=e29acfa6",
   "./src/net.js": "./src/net.js?v=7aab9f0d",
   "./src/panel.js": "./src/panel.js?v=59cf7d9b",
-  "./src/players.js": "./src/players.js?v=cde9daef",
+  "./src/players.js": "./src/players.js?v=94b68f0f",
   "./src/pwa.js": "./src/pwa.js?v=6ced96ce",
   "./src/rabbits.js": "./src/rabbits.js?v=1f31a666",
   "./src/scene.js": "./src/scene.js?v=53974aaa",
   "./src/settings.js": "./src/settings.js?v=bfe2640a",
   "./src/skills.js": "./src/skills.js?v=9b4ef1ca",
-  "./src/state.js": "./src/state.js?v=b90d58f8",
+  "./src/state.js": "./src/state.js?v=2a89ac51",
+  "./src/target.js": "./src/target.js?v=58852fbb",
   "./src/telemetry.js": "./src/telemetry.js?v=bf1e1cdd",
   "./src/terrain.js": "./src/terrain.js?v=9538d355",
   "./src/town.js": "./src/town.js?v=862b4290",
+  "./src/trade.js": "./src/trade.js?v=6e4dc1e5",
   "./src/ui.js": "./src/ui.js?v=c19b134d",
   "./shared/collision.js": "./shared/collision.js?v=58b805b6",
   "./shared/consumables.js": "./shared/consumables.js?v=c5487e55",
-  "./shared/data.js": "./shared/data.js?v=b0760a0b",
+  "./shared/data.js": "./shared/data.js?v=1e707224",
   "./shared/gallop.js": "./shared/gallop.js?v=3ca65873",
   "./shared/inventory.js": "./shared/inventory.js?v=07093bab",
   "./shared/skills.js": "./shared/skills.js?v=813a21af",
@@ -57,7 +59,7 @@
 }
 </script>
 <!-- importmap:end -->
-<link rel="stylesheet" href="css/style.css?v=3adc3cb4">
+<link rel="stylesheet" href="css/style.css?v=24b7c4de">
 </head>
 <body>
 <div id="cap">Night World Online — World 1</div>
@@ -68,6 +70,8 @@
 <div id="manawrap"><div id="manafill"></div></div>
 <div id="manalabel"></div>
 <div id="hud"></div>
+<div id="target"><div class="tn"></div><div class="tb"><div class="tf"></div></div></div>
+<div id="tmenu"></div>
 <div id="who"></div>
 <div id="chatlog"></div>
 <button id="chatbtn" type="button">Chat</button>
@@ -78,7 +82,7 @@
 <canvas id="mm" width="96" height="96" title="Tap for the big map"></canvas>
 <div id="inv">
   <div id="invhead">Inventory<span class="sum" id="invsum"></span><span class="chev">&#9650;</span><button id="craftbtn" type="button">Craft</button></div>
-  <div id="invbody"><div id="eq"></div><div id="grid"></div></div>
+  <div id="invbody"><div id="coins"></div><div id="eq"></div><div id="grid"></div></div>
 </div>
 <div id="stick"><div id="knob"></div></div>
 <button id="mount" type="button">Mount</button>
@@ -90,6 +94,9 @@
 <div id="castlabel"></div>
 <div id="cast"><div id="castfill"></div></div>
 <div id="panel"></div>
+<div id="inspect" class="modal"></div>
+<div id="tradereq"></div>
+<div id="trade" class="modal"></div>
 <div id="netbanner"></div>
 <div id="toasts"></div>
 <div id="fx"></div>

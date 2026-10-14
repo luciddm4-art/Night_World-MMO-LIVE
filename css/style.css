@@ -195,3 +195,45 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
   .cb{bottom:44px;left:142px}.cb#foodbtn{left:196px}
   #buffs{left:142px;bottom:96px}
 }
+
+/* ---- target frame (beside your own status), its menu, inspect window, trading */
+#coins{margin:0 0 6px;text-align:center;color:#ffe28a;font:700 12px Georgia,serif}
+#coins::before{content:"\25CF ";color:#f2b830}
+#target{position:fixed;left:calc(12px + min(220px,50vw) + 6px);top:36px;width:clamp(76px,calc(100vw - 12px - min(220px,50vw) - 6px - 98px),150px);height:27px;z-index:3;display:none;box-sizing:border-box;padding:3px 6px;border:2px solid rgba(255,120,100,.85);border-radius:8px;background:rgba(40,12,12,.8);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#target.show{display:block}
+#target .tn{font:700 10px/11px Georgia,serif;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 0 #000}
+#target .tb{margin-top:2px;height:5px;border-radius:3px;background:rgba(0,0,0,.6);overflow:hidden}
+#target .tf{height:100%;width:100%;background:linear-gradient(90deg,#7a1a1a,#d84040);transition:width .2s}
+#tmenu{position:fixed;left:12px;top:98px;z-index:7;width:min(210px,60vw);display:none;padding:8px;border:2px solid #f2d34a;border-radius:10px;background:rgba(11,14,26,.96)}
+#tmenu.show{display:block}
+#tmenu .t{margin:0 0 4px;text-align:center;color:#f2d34a;font:700 13px Georgia,serif}
+#tmenu button{display:block;width:100%;margin:5px 0 0;padding:11px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(242,211,74,.14);color:#fff;font:700 14px Georgia,serif}
+#tmenu button.x{background:rgba(200,50,40,.3);border-color:rgba(255,120,100,.6)}
+.modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9;width:min(380px,94vw);max-height:88vh;overflow:auto;display:none;box-sizing:border-box;background:rgba(11,14,26,.97);border:2px solid #f2d34a;border-radius:12px;padding:12px;color:#f2d34a;font-family:Georgia,serif}
+.modal.show{display:block}
+.modal h3{margin:0 0 4px;font-size:19px;text-align:center}
+.modal h4{margin:10px 0 4px;font-size:12px;color:#cfd6ec;letter-spacing:.1em;text-transform:uppercase}
+.modal p{margin:3px 0 6px;font-size:13px;color:#cfd6ec;text-align:center}
+.modal .row{display:flex;justify-content:space-between;gap:8px;padding:5px 8px;margin:3px 0;border-radius:6px;background:rgba(242,211,74,.08);color:#fff;font:600 13px Georgia,serif}
+.modal .row b{color:#f2d34a;font-weight:700}
+.modal .row.none{opacity:.45;justify-content:center}
+.modal .btns{display:flex;gap:8px;margin-top:10px}
+.modal button,.modal .btns button{flex:1;padding:11px 8px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(242,211,74,.16);color:#fff;font:700 14px Georgia,serif}
+.modal button.x{background:rgba(200,50,40,.3);border-color:rgba(255,120,100,.6)}
+.modal button.go{background:rgba(60,160,80,.4);border-color:rgba(120,230,150,.8)}
+.modal button.ok{background:rgba(60,160,80,.75)}
+.modal button:disabled{opacity:.4}
+.modal input{box-sizing:border-box;width:100%;padding:9px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(0,0,0,.4);color:#fff;font:700 14px Georgia,serif;outline:none}
+#trade .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#trade .state{margin-top:2px;text-align:center;font:700 11px Georgia,serif;color:#9aa6c8}
+#trade .state.ok{color:#7dff9a}
+#trade .chips{display:flex;flex-wrap:wrap;gap:5px}
+#trade .chips button{flex:none;padding:7px 9px;font-size:12px}
+#trade .qty{display:flex;gap:6px;margin-top:6px;align-items:center}
+#trade .qty button{flex:none;padding:9px 12px}
+#trade .qty input{flex:1;min-width:0}
+#tradereq{position:fixed;left:50%;top:104px;transform:translateX(-50%);z-index:9;display:none;width:min(300px,92vw);box-sizing:border-box;padding:10px;border:2px solid #f2d34a;border-radius:12px;background:rgba(11,14,26,.97);color:#f2d34a;font:700 14px Georgia,serif;text-align:center}
+#tradereq.show{display:block}
+#tradereq .btns{display:flex;gap:8px;margin-top:8px}
+#tradereq button{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(242,211,74,.6);background:rgba(242,211,74,.16);color:#fff;font:700 14px Georgia,serif}
+#tradereq button.go{background:rgba(60,160,80,.6)}
