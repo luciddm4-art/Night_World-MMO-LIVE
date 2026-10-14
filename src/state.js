@@ -11,6 +11,7 @@ export const S = {
   inv: { eq: Object.fromEntries(EQUIP_SLOTS.map((s) => [s, null])), slots: new Array(CFG.INV_SLOTS).fill(null) },
   st: { hp: CFG.PLAYER_BASE_HP, maxHp: CFG.PLAYER_BASE_HP, dmg: 1, haste: 0, def: 0, speed: 0 },
   mounted: false,
+  ride: { t: 0, idle: 0, gallop: false }, // donkey gallop state (shared/gallop.js)
   mountHp: CFG.MOUNT_HP, // donkey HP (server tells us)
   mountReadyAt: 0, // performance.now() time when a knocked-out donkey can be summoned again
   donkeyPos: null,

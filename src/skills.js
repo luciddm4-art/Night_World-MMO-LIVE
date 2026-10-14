@@ -232,6 +232,7 @@ export function updateSkills(now) {
     let h = '';
     for (const b of S.buffs.list) if (b.until > now) h += '<span>' + ((SKILLS[b.id] && SKILLS[b.id].n) || b.id) + ' ' + clock(b.until - now) + '</span>';
     if (S.buffs.food && S.buffs.food.until > now) h += '<span class="food">' + ((ITEMS[S.buffs.food.id] && ITEMS[S.buffs.food.id].n) || 'Food') + ' ' + clock(S.buffs.food.until - now) + '</span>';
+    if (S.ride.gallop) h = '<span class="gal">Gallop +10%</span>' + h;
     if (buffsEl.innerHTML !== h) buffsEl.innerHTML = h;
   }
 }

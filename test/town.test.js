@@ -77,15 +77,17 @@ test('town: no trees, resource nodes, rabbit spawns or hills inside the walls or
   assert.ok(trees > 50, 'forest outside the town: ' + trees);
 });
 
-test('portal: due south, about 8 minutes by donkey and 13 on foot from the spawn plaza', () => {
+test('portal: due south, about 8 minutes by galloping donkey and 12 on foot from the spawn plaza', () => {
   assert.equal(PORTAL.x, 0);
   assert.ok(PORTAL.z > 0, 'south of the town, away from the main gate on the north side');
   const dist = Math.hypot(PORTAL.x - SPAWN.x, PORTAL.z - SPAWN.z);
-  const donkeyMin = dist / CFG.RIDE_SPEED / 60, walkMin = dist / CFG.WALK_SPEED / 60;
-  assert.ok(donkeyMin > 7.7 && donkeyMin < 8.3, 'donkey: ' + donkeyMin.toFixed(2) + ' min');
-  assert.ok(walkMin > 13 && walkMin < 13.7, 'walking: ' + walkMin.toFixed(2) + ' min');
+  const g = CFG.GALLOP_AFTER_MS / 1000; // 3 s at 8.4 units/s, then 9.24
+  const donkeyMin = (g + (dist - g * CFG.RIDE_SPEED) / (CFG.RIDE_SPEED * CFG.GALLOP_MULT)) / 60, walkMin = dist / CFG.WALK_SPEED / 60;
+  assert.ok(donkeyMin > 7.8 && donkeyMin < 8.2, 'donkey: ' + donkeyMin.toFixed(2) + ' min');
+  assert.ok(walkMin > 12 && walkMin < 12.6, 'walking: ' + walkMin.toFixed(2) + ' min');
   assert.equal(CFG.WALK_SPEED, 6);
-  assert.equal(CFG.RIDE_SPEED, 10);
+  assert.equal(CFG.RIDE_SPEED, 8.4);
+  assert.ok(Math.abs(CFG.RIDE_SPEED - CFG.WALK_SPEED * 1.4) < 1e-9, 'the donkey is 40% faster than walking');
   assert.equal(courtFree(PORTAL.x, PORTAL.z), false, 'the portal base is solid');
   assert.equal(courtFree(PORTAL.x, PORTAL.z - 4), true);
   assert.ok(PORTAL_SAFE >= 30);

@@ -188,6 +188,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;t
 .cb.fed{box-shadow:0 0 8px 2px rgba(255,190,110,.55)}
 #buffs{left:18px;bottom:222px;display:flex;flex-wrap:wrap;gap:4px;width:150px;pointer-events:none}
 #buffs span{min-width:34px;padding:2px 5px;border:1px solid rgba(242,211,74,.7);border-radius:10px;background:rgba(11,14,26,.8);color:#f2d34a;font:700 10px Georgia,serif;text-align:center}
+#buffs span.gal{border-color:rgba(160,230,255,.9);color:#bfeaff}
 #buffs span.food{border-color:rgba(255,190,110,.9);color:#ffd9a0}
 @media (max-height:520px){
   .sk[data-k=r]{right:202px;bottom:150px}.sk[data-k=d]{right:262px;bottom:150px}

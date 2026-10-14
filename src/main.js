@@ -15,6 +15,7 @@ import { on, send, connect, stop } from './net.js';
 import { say, showBoot, updateHPUI, updateHud } from './ui.js';
 import { initInventory, renderInv, toggleInv, invOpen } from './inventory.js';
 import { initPanel, panelState, openNearestStation, closePanel, renderPanel } from './panel.js';
+import { stepRide, hitRide, rideSpeed } from '../shared/gallop.js';
 import { initMount, updateMountButton, applyMountState, updateDonkey } from './mount.js';
 import { initInteract, checkNear, doInteract, onCast, onFail, cancelGather, updateGather } from './interact.js';
 import { initCombat, tryAttack, bindFigure } from './combat.js';
@@ -146,6 +147,8 @@ on('hurt', (m) => {
     sfx('hurt');
     shake(0.15);
     floatText(P.x, P.y + 2.6, P.z, '-' + m.d, 'mount');
+    if (S.ride.gallop) say('The donkey slows down...');
+    hitRide(S.ride); // a bite ends the gallop; riding for 3 more seconds brings it back
     return;
   }
   sfx('hurt');
@@ -195,6 +198,7 @@ function loop() {
   const moving = Math.abs(ix) > 0.05 || Math.abs(iz) > 0.05;
   if (S.gather.active && moving) cancelGather();
   if (S.spell && moving) cancelSpellByMoving();
+  stepRide(S.ride, dt, moving && !S.gather.active && S.ready, S.mounted);
   updateGather(now);
 
   const yaw = input.yaw, pitch = input.pitch;
@@ -205,7 +209,7 @@ function loop() {
   if (l > 0.05 && !S.gather.active) {
     if (l > 1) { mx /= l; mz /= l; }
     // two speeds: walking (6/s) and the donkey (10/s). There is no sprint.
-    const sp = S.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED * (1 + (S.st.speed || 0)); // boots: +40% on foot
+    const sp = S.mounted ? rideSpeed(S.ride) : CFG.WALK_SPEED * (1 + (S.st.speed || 0)); // donkey 8.4 (9.24 galloping); boots: +40% on foot
     tvx = mx * sp; tvz = mz * sp;
     aim = Math.atan2(mx, mz);
   }
@@ -255,7 +259,7 @@ function loop() {
     if (stepD > 4.2) { stepD = 0; sfx('step'); }
   } else if (S.mounted && psp > 3) {
     dustT -= dt;
-    if (dustT <= 0) { dustT = 0.1; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
+    if (dustT <= 0) { dustT = S.ride.gallop ? 0.05 : 0.1; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
   }
 
   // camera follows with a little smoothing; snap if we were teleported
