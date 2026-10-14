@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE, WORLDS, ITEMS, CFG } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS, ITEMS, CFG, SPAWN, PORTAL } from '../shared/data.js';
 import { addItem } from '../shared/inventory.js';
 import { makeFilter, reservedName, parseList, parseCommand } from './moderation.js';
 import { Room } from './room.js';
@@ -152,7 +152,7 @@ export function createGameServer(opts = {}) {
     switch (c.cmd) {
       case 'help':
         say('/report <name> <reason> — tell the moderators about a player');
-        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports /give <item> [amount]');
+        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports /give <item> [amount] /teleport <x> <z> | <player> | town | portal');
         return;
       case 'report': {
         const t = findByName(c.args[0]);
@@ -231,6 +231,25 @@ export function createGameServer(opts = {}) {
         room.sendInv(p);
         cfg.log('ADMIN', p.name, 'give', id, n);
         return;
+      }
+      case 'teleport': case 'tp': { // admin: go anywhere on the map, or to a player
+        if (!admin) break;
+        const usage = 'Usage: /teleport <x> <z>  |  /teleport <player name>  |  /teleport town  |  /teleport portal';
+        const a0 = String(c.args[0] || '').toLowerCase();
+        let x, z, label;
+        if (!a0) return room.fail(p, usage);
+        if (a0 === 'town' || a0 === 'spawn') { x = SPAWN.x; z = SPAWN.z; label = 'the town'; }
+        else if (a0 === 'portal') { x = PORTAL.x; z = PORTAL.z - 8; label = 'the portal'; }
+        else if (c.args.length >= 2 && Number.isFinite(Number(c.args[0])) && Number.isFinite(Number(c.args[1]))) { x = Number(c.args[0]); z = Number(c.args[1]); label = Math.round(x) + ', ' + Math.round(z); }
+        else {
+          const t = target();
+          if (!t) return;
+          if (t.room !== room) return room.fail(p, t.player.name + ' is in another world');
+          x = t.player.x + 1.5; z = t.player.z; label = t.player.name;
+        }
+        if (!room.teleport(p, x, z)) return room.fail(p, 'That is outside the map (limit ±' + CFG.TP_LIMIT + ')');
+        cfg.log('ADMIN', p.name, 'teleport', label);
+        return say('Teleported to ' + label);
       }
       case 'say': {
         if (!admin) break;

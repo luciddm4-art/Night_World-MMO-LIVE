@@ -106,6 +106,16 @@ ok(countItem(A.p.inv, 'wood') === 12 && countItem(A.p.inv, 'ore') === 9 && count
 ok(A.p.coins === 10_000_000_000 - 2500 && B.p.coins === 2500, 'coins changed hands');
 ok((await B.page.evaluate(() => window.__nwo.S.coins)) === 2500, 'the receiver sees their new balance');
 
+// admin teleport
+await A.page.evaluate(() => window.__nwo.send({ t: 'chat', m: '/teleport 1200 -800' }));
+await A.page.waitForFunction(() => Math.abs(window.__nwo.S.P.x - 1200) < 2, null, { timeout: 5000 });
+await wait(1500);
+ok(Math.abs(A.p.x - 1200) < 2 && Math.abs(A.p.z + 800) < 2, 'an admin can /teleport far across the map and stays there');
+await A.page.screenshot({ path: `${out}/social-teleport.png` });
+await B.page.evaluate(() => window.__nwo.send({ t: 'chat', m: '/teleport 0 0' }));
+await wait(500);
+ok(Math.abs(B.p.x - 60.5) < 3, 'a normal player cannot /teleport');
+
 for (const [n, x] of [['Alice', A], ['Bob', B]]) ok(x.page.errors.length === 0, `no page errors (${n})` + (x.page.errors.length ? ': ' + x.page.errors.join(' | ') : ''));
 await browser.close();
 await gs.stop();
