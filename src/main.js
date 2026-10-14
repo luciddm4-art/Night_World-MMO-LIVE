@@ -19,7 +19,7 @@ import { initMount, updateMountButton, applyMountState, updateDonkey } from './m
 import { initInteract, checkNear, doInteract, onCast, onFail, cancelGather, updateGather } from './interact.js';
 import { initCombat, tryAttack, bindFigure } from './combat.js';
 import { initChat, addChat, openChat, closeChat, isTyping } from './chat.js';
-import { drawMap } from './minimap.js';
+import { drawMap, isMapBig, setMapBig, toggleMap } from './minimap.js';
 import { input, initInput } from './input.js';
 import { initAuth, myColor, logout } from './auth.js';
 
@@ -49,8 +49,9 @@ initInput(renderer.domElement, {
   interact: doInteract,
   toggleInv,
   craft: openNearestStation,
+  map: toggleMap,
   chat: openChat,
-  escape: () => { if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
+  escape: () => { if (isMapBig()) setMapBig(false); else if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
 });
 
 // ---- server messages ----
@@ -215,7 +216,7 @@ function loop() {
   }
 
   fr++;
-  if (fr % 6 === 0) drawMap();
+  if (fr % (isMapBig() ? 12 : 6) === 0) drawMap();
 
   P.y = Math.max(0.13, hgt(P.x, P.z));
   me.position.set(P.x, P.y + (S.mounted ? 0.55 : 0), P.z);

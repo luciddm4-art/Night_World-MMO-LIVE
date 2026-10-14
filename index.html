@@ -26,11 +26,11 @@
   "./src/courtyard.js": "./src/courtyard.js?v=b5eae813",
   "./src/figures.js": "./src/figures.js?v=fc3de02a",
   "./src/fx.js": "./src/fx.js?v=694afb83",
-  "./src/input.js": "./src/input.js?v=43d1aaf0",
+  "./src/input.js": "./src/input.js?v=467e52fc",
   "./src/interact.js": "./src/interact.js?v=16ced734",
   "./src/inventory.js": "./src/inventory.js?v=2b7e83a9",
-  "./src/main.js": "./src/main.js?v=4d788853",
-  "./src/minimap.js": "./src/minimap.js?v=0214bc0b",
+  "./src/main.js": "./src/main.js?v=eca10191",
+  "./src/minimap.js": "./src/minimap.js?v=d4b24c56",
   "./src/mount.js": "./src/mount.js?v=e29acfa6",
   "./src/net.js": "./src/net.js?v=7aab9f0d",
   "./src/panel.js": "./src/panel.js?v=59cf7d9b",
@@ -53,7 +53,7 @@
 }
 </script>
 <!-- importmap:end -->
-<link rel="stylesheet" href="css/style.css?v=db55cce5">
+<link rel="stylesheet" href="css/style.css?v=4fd97a90">
 </head>
 <body>
 <div id="cap">Night World Online — World 1</div>
@@ -68,7 +68,8 @@
 <button id="gear" type="button" aria-label="Settings">&#9881;</button>
 <div id="settings"></div>
 <form id="chatform" autocomplete="off"><input id="chatin" maxlength="120" placeholder="Say something… (/report name reason)"><button type="submit">Send</button></form>
-<canvas id="mm" width="96" height="96"></canvas>
+<div id="mmback"></div>
+<canvas id="mm" width="96" height="96" title="Tap for the big map"></canvas>
 <div id="inv">
   <div id="invhead">Inventory<span class="sum" id="invsum"></span><span class="chev">&#9650;</span><button id="craftbtn" type="button">Craft</button></div>
   <div id="invbody"><div id="eq"></div><div id="grid"></div></div>
