@@ -2,7 +2,7 @@
 import { lights } from './scene.js';
 
 const KEY = 'nwo_settings';
-const defaults = { mute: false, vibrate: true, autoface: true, brightness: 1 };
+const defaults = { mute: false, vibrate: true, autoface: true, brightness: 1, gfx: 'smooth' };
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
@@ -28,12 +28,15 @@ export function initSettings() {
   const box = document.getElementById('settings');
   box.innerHTML = '<h3>Settings</h3>'
     + '<label>Brightness <input id="set-bright" type="range" min="0.6" max="2.2" step="0.05"></label>'
+    + '<label>Graphics <select id="set-gfx"><option value="smooth">Low-poly (smooth)</option><option value="pixel">Pixel (retro)</option></select></label>'
     + '<label>Sound <input id="set-sound" type="checkbox"></label>'
     + '<label>Vibration <input id="set-vib" type="checkbox"></label>'
     + '<label>Auto-face rabbits when attacking <input id="set-face" type="checkbox"></label>'
     + '<button type="button" id="set-close">Close</button>';
   const $ = (id) => document.getElementById(id);
   $('set-bright').value = settings.brightness;
+  $('set-gfx').value = settings.gfx === 'pixel' ? 'pixel' : 'smooth';
+  $('set-gfx').addEventListener('change', (e) => { settings.gfx = e.target.value; saveSettings(); location.reload(); }); // the picture mode is chosen when the page starts
   $('set-sound').checked = !settings.mute;
   $('set-vib').checked = settings.vibrate;
   $('set-face').checked = settings.autoface;

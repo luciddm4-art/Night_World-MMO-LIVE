@@ -23,6 +23,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'] });
 async function newPage() {
   const ctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
+  // This test has fixed waits and CI draws with a software renderer, so it runs in the cheap Pixel mode
+  // (the smooth low-poly mode is covered by the skills, social and Frostfall browser tests).
+  await ctx.addInitScript(() => localStorage.setItem('nwo_settings', JSON.stringify({ gfx: 'pixel' })));
   const page = await ctx.newPage();
   page.errors = [];
   page.on('pageerror', (e) => page.errors.push('pageerror: ' + e.message));
@@ -141,7 +144,8 @@ const swordIdx = player.inv.slots.findIndex((s) => s && s.id === 'sword');
 await A.evaluate((i) => document.querySelectorAll('#grid .islot')[i].click(), swordIdx);
 await wait(600);
 ok(await A.evaluate(() => window.__nwo.me.userData.heldId === 'sword'), 'sword equipped: it shows in the character\'s hand');
-ok(await B.evaluate(() => Object.values(window.__nwo.S.others)[0].g.userData.heldId === 'sword'), 'the other player sees the sword too');
+// (the software renderer used in CI draws the sharper picture slowly, so wait for the update instead of a fixed time)
+ok(await B.waitForFunction(() => Object.values(window.__nwo.S.others)[0].g.userData.heldId === 'sword', null, { timeout: 8000 }).then(() => true, () => false), 'the other player sees the sword too');
 await A.screenshot({ path: out + '/sword.png' });
 
 // bow: long reach
