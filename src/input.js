@@ -29,6 +29,12 @@ export function initInput(canvas, cb) {
     if (e.code === 'KeyI' && !e.repeat) cb.toggleInv();
     if (e.code === 'KeyC' && !e.repeat) cb.craft();
     if (e.code === 'KeyM' && !e.repeat) cb.map();
+    if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) { // skills 1-5 (Q W E R D), potion Z, food X
+      const si = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5'].indexOf(e.code);
+      if (si >= 0) cb.skill(si);
+      if (e.code === 'KeyZ') cb.use('potion');
+      if (e.code === 'KeyX') cb.use('food');
+    }
     if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !e.repeat) { e.preventDefault(); cb.chat(); }
     if (e.code === 'Escape') cb.escape();
   });

@@ -5,7 +5,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE, WORLDS } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS, ITEMS } from '../shared/data.js';
+import { addItem } from '../shared/inventory.js';
 import { makeFilter, reservedName, parseList, parseCommand } from './moderation.js';
 import { Room } from './room.js';
 import { Player } from './player.js';
@@ -151,7 +152,7 @@ export function createGameServer(opts = {}) {
     switch (c.cmd) {
       case 'help':
         say('/report <name> <reason> — tell the moderators about a player');
-        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports');
+        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports /give <item> [amount]');
         return;
       case 'report': {
         const t = findByName(c.args[0]);
@@ -220,6 +221,17 @@ export function createGameServer(opts = {}) {
         cfg.log('ADMIN', p.name, 'unban', name);
         return say('Unbanned ' + name);
       }
+      case 'give': { // admin test helper: put an item (e.g. one you just added to the data files) in your own bag
+        if (!admin) break;
+        const id = String(c.args[0] || '').toLowerCase();
+        const n = Math.max(1, Math.min(99, Math.floor(Number(c.args[1]) || 1)));
+        if (!ITEMS[id]) return room.fail(p, 'Usage: /give <item id> [amount]. Item ids are in shared/data.js (e.g. sword, iron_boots, plank)');
+        if (!addItem(p.inv, id, n)) return room.fail(p, 'Your inventory is full');
+        room.gain(p, id, n, 'admin');
+        room.sendInv(p);
+        cfg.log('ADMIN', p.name, 'give', id, n);
+        return;
+      }
       case 'say': {
         if (!admin) break;
         if (!c.rest) return room.fail(p, 'Usage: /say <message>');
@@ -277,7 +289,7 @@ export function createGameServer(opts = {}) {
   }
 
   function savePlayer(entry) {
-    if (entry.player.account) store.saveCharacter(entry.player.account, entry.player.toSave(entry.room.seed));
+    if (entry.player.account) store.saveCharacter(entry.player.account, entry.player.toSave(entry.room.seed, entry.room.now()));
   }
 
   function detach(ws) {
