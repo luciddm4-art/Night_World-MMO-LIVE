@@ -90,9 +90,9 @@ export class Player {
   regenMult() { return 1 + (this.foodBuff().regen || 0); }
   manaRegen() { return CFG.MANA_REGEN_PER_SEC * (1 + (this.foodBuff().mregen || 0)); }
 
-  setSpawn(rng = Math.random) {
-    this.x = SPAWN.x + (rng() - 0.5) * SPAWN.spread;
-    this.z = SPAWN.z;
+  setSpawn(rng = Math.random, spawn = SPAWN) {
+    this.x = spawn.x + (rng() - 0.5) * spawn.spread;
+    this.z = spawn.z;
     this.r = Math.PI;
     this.y = 0.13;
   }

@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE, WORLDS, ITEMS, CFG, SPAWN, PORTAL } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS, ITEMS, CFG } from '../shared/data.js';
 import { addItem } from '../shared/inventory.js';
 import { makeFilter, reservedName, parseList, parseCommand } from './moderation.js';
 import { Room } from './room.js';
@@ -238,8 +238,8 @@ export function createGameServer(opts = {}) {
         const a0 = String(c.args[0] || '').toLowerCase();
         let x, z, label;
         if (!a0) return room.fail(p, usage);
-        if (a0 === 'town' || a0 === 'spawn') { x = SPAWN.x; z = SPAWN.z; label = 'the town'; }
-        else if (a0 === 'portal') { x = PORTAL.x; z = PORTAL.z - 8; label = 'the portal'; }
+        if (a0 === 'town' || a0 === 'spawn') { x = room.realm.spawn.x; z = room.realm.spawn.z; label = room.realm.id === 't2' ? 'the village' : 'the town'; }
+        else if (a0 === 'portal') { x = room.realm.portal.x; z = room.realm.portal.z - 8; label = 'the portal'; }
         else if (c.args.length >= 2 && Number.isFinite(Number(c.args[0])) && Number.isFinite(Number(c.args[1]))) { x = Number(c.args[0]); z = Number(c.args[1]); label = Math.round(x) + ', ' + Math.round(z); }
         else {
           const t = target();
@@ -247,7 +247,7 @@ export function createGameServer(opts = {}) {
           if (t.room !== room) return room.fail(p, t.player.name + ' is in another world');
           x = t.player.x + 1.5; z = t.player.z; label = t.player.name;
         }
-        if (!room.teleport(p, x, z)) return room.fail(p, 'That is outside the map (limit ±' + CFG.TP_LIMIT + ')');
+        if (!room.teleport(p, x, z)) return room.fail(p, 'That is outside the map (limit ±' + room.realm.limit + ')');
         cfg.log('ADMIN', p.name, 'teleport', label);
         return say('Teleported to ' + label);
       }
@@ -408,7 +408,7 @@ export function createGameServer(opts = {}) {
         cfg.log('ADMIN', player.name, 'received the one-time admin coin grant');
       }
       player.v2 = m.v === 2; // new clients understand delta snapshots ("d"); old pages keep getting full ones ("s")
-      if (!player.restore(saved, seed)) player.setSpawn();
+      if (!player.restore(saved, seed)) player.setSpawn(Math.random, room.realm.spawn);
       else room.ensureStandable(player);
       const entry = { player, room, ws };
       ws.entry = entry;

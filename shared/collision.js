@@ -35,7 +35,7 @@ export function courtFree(x, z, tol = 0) {
 
 // world: createWorld(seed); standing(treeKey) -> true if that tree is still there ("X,Z,i").
 export function isFree(world, standing, x, z, tol = 0) {
-  if (!courtFree(x, z, tol)) return false;
+  if (!(world.realm ? world.realm.solid : courtFree)(x, z, tol)) return false;
   const cx = Math.floor(x / CS), cz = Math.floor(z / CS);
   for (let ii = -1; ii <= 1; ii++) {
     for (let jj = -1; jj <= 1; jj++) {

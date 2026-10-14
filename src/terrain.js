@@ -3,7 +3,7 @@
 // tree/node is currently gatherable comes from the server via S.nodeQty.
 import { CFG } from '../shared/data.js';
 import { createWorld } from '../shared/world.js';
-import { SEED } from './config.js';
+import { SEED, REALM } from './config.js';
 import { S, nodeQty } from './state.js';
 import { T, scene, tex } from './scene.js';
 import { isFree as sharedFree } from '../shared/collision.js';
@@ -13,7 +13,8 @@ export const world = createWorld(SEED);
 export const hgt = world.hgt;
 export const chunks = {};
 
-const gmat = new T.MeshLambertMaterial({ map: tex([40, 70, 42], 0, 8), flatShading: true, vertexColors: true });
+const snowy = REALM.id === 't2';
+const gmat = new T.MeshLambertMaterial({ map: snowy ? tex([236, 241, 248], 0, 8) : tex([40, 70, 42], 0, 8), flatShading: true, vertexColors: true });
 
 function mkChunk(cx, cz) {
   const g = new T.PlaneGeometry(CS, CS, SEG, SEG);
@@ -21,9 +22,15 @@ function mkChunk(cx, cz) {
   g.translate(cx * CS + CS / 2, 0, cz * CS + CS / 2);
   const p = g.attributes.position, cols = [];
   for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), z = p.getZ(i), v = 0.75 + world.vn(x * 0.3, z * 0.3) * 0.4;
-    p.setY(i, hgt(x, z));
-    cols.push(v, v, v);
+    const x = p.getX(i), z = p.getZ(i), y = hgt(x, z);
+    p.setY(i, y);
+    if (world.tint) { // Frostfall: ice, rock, snow and pine floor by place and slope
+      const c = world.tint(x, z, y), v = 0.9 + world.vn(x * 0.3, z * 0.3) * 0.16;
+      cols.push(c[0] * v, c[1] * v, c[2] * v);
+    } else {
+      const v = 0.75 + world.vn(x * 0.3, z * 0.3) * 0.4;
+      cols.push(v, v, v);
+    }
   }
   g.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
   g.computeVertexNormals();
@@ -53,8 +60,8 @@ function mkOre() {
 
 const MAXT = 3400;
 const trunk = new T.InstancedMesh(new T.CylinderGeometry(0.35, 0.5, 3, 5), new T.MeshLambertMaterial({ color: 0x3a2a1c }), MAXT);
-const fol = new T.InstancedMesh(new T.ConeGeometry(2.4, 4.5, 6), new T.MeshLambertMaterial({ color: 0x2d5236, flatShading: true }), MAXT);
-const fol2 = new T.InstancedMesh(new T.ConeGeometry(1.7, 3.8, 6), new T.MeshLambertMaterial({ color: 0x35603f, flatShading: true }), MAXT);
+const fol = new T.InstancedMesh(new T.ConeGeometry(2.4, 4.5, 6), new T.MeshLambertMaterial({ color: snowy ? 0x2f5d57 : 0x2d5236, flatShading: true }), MAXT);
+const fol2 = new T.InstancedMesh(new T.ConeGeometry(1.7, 3.8, 6), new T.MeshLambertMaterial({ color: snowy ? 0xdbe8f1 : 0x35603f, flatShading: true }), MAXT);
 const tm = new T.Matrix4(), tq = new T.Quaternion(), tsv = new T.Vector3(), tp = new T.Vector3();
 trunk.frustumCulled = fol.frustumCulled = fol2.frustumCulled = false;
 scene.add(trunk, fol, fol2);

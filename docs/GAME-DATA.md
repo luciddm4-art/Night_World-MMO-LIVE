@@ -68,7 +68,7 @@ planned; until then use the admin command below to test).
 ## Try things out: `/teleport` and `/give`
 
 Admins can also type `/teleport <x> <z>` (or `/tp`), `/teleport <player name>`, `/teleport town` or `/teleport portal`
-to jump anywhere in their current world (up to ±6000 units, `CFG.TP_LIMIT`). Other players get "Unknown command".
+to jump anywhere in their current world (up to ±6000 in the start world, ±2470 in Frostfall). Other players get "Unknown command".
 
 ### `/give`
 

@@ -2,7 +2,13 @@
 import { CFG, weaponIdOf } from '../shared/data.js';
 import { S } from './state.js';
 import { T, scene, cam, renderer, onResize, sky } from './scene.js';
-import { animateCourtyard } from './courtyard.js';
+import { REALM } from './config.js';
+// The start world builds its Crafting Hall and town; Frostfall builds its own village (both are pure scenery)
+if (REALM.id === 't2') { // the caption names the world you are in
+  document.getElementById('cap').textContent = 'Night World Online — ' + REALM.name;
+  document.title = 'Night World Online — ' + REALM.name;
+}
+const { animateCourtyard } = REALM.id === 't1' ? await import('./courtyard.js') : await import('./village.js');
 import { mkFig, animFig, upS, setHeld } from './figures.js';
 import { hgt, updateWorld, isFree, setNodeQty, resetNodes, updateNodeFx } from './terrain.js';
 import { syncRabbits, patchRabbits, updateRabbits, clearRabbits, onHit } from './rabbits.js';

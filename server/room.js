@@ -3,7 +3,7 @@
 // Room knows nothing about sockets: players have a send(obj) function, and the
 // clock/RNG are injectable, which keeps it fully unit-testable.
 import {
-  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, STACK_SLOTS, POTIONS, FOODS, CHAT_MAX_LEN, REWARD_SLOTS, inSafeZone, weaponOf, weaponIdOf,
+  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, STACK_SLOTS, POTIONS, FOODS, CHAT_MAX_LEN, REWARD_SLOTS, weaponOf, weaponIdOf,
 } from '../shared/data.js';
 import { SKILLS, SKILL_KEYS, SKILL_STATS, skillIdsFor } from '../shared/skills.js';
 import { createWorld } from '../shared/world.js';
@@ -39,6 +39,7 @@ export class Room {
     this.now = now;
     this.rng = rng;
     this.world = createWorld(seed);
+    this.realm = this.world.realm; // spawn point, safe zone, solids (Tier 1 town or Frostfall)
     this.players = new Map(); // id -> Player
     this.trades = new Trades(this);
     this.depleted = new Map(); // node/tree id -> {qty, readyAt}
@@ -54,7 +55,7 @@ export class Room {
   // A saved position can end up inside a wall or house after the world changed: move such players to the plaza.
   ensureStandable(p) {
     if (isFree(this.world, (k) => !this.isDepleted(k), p.x, p.z)) return false;
-    p.setSpawn(this.rng);
+    p.setSpawn(this.rng, this.realm.spawn);
     p.mounted = false;
     p.donkey = null;
     return true;
@@ -531,7 +532,7 @@ export class Room {
 
   // Admin teleport: puts the player at (x, z) at once. Returns the spot, or null if it is outside the map limit.
   teleport(p, x, z) {
-    if (!isNum(x) || !isNum(z) || Math.abs(x) > CFG.TP_LIMIT || Math.abs(z) > CFG.TP_LIMIT) return null;
+    if (!isNum(x) || !isNum(z) || Math.abs(x) > this.realm.limit || Math.abs(z) > this.realm.limit) return null;
     const now = this.now();
     this.cancelGather(p);
     p.x = x; p.z = z;
@@ -712,14 +713,14 @@ export class Room {
         if (dl > 0.3) {
           const sp = 1.2 * dt;
           const nx = rb.x + (dx / dl) * sp, nz = rb.z + (dz / dl) * sp;
-          if (!inSafeZone(nx, nz)) { rb.x = nx; rb.z = nz; } else rb.wt = 0; // rabbits never wander into the town
+          if (!this.realm.inSafe(nx, nz)) { rb.x = nx; rb.z = nz; } else rb.wt = 0; // rabbits never wander into the town
         }
         continue;
       }
       const t = this.players.get(rb.target);
       if (!t) { rb.mode = 'wander'; rb.target = null; continue; }
       const pdx = t.x - rb.x, pdz = t.z - rb.z, pd = Math.hypot(pdx, pdz);
-      if (pd > 12 || inSafeZone(t.x, t.z)) { rb.mode = 'wander'; rb.target = null; } // the town is a safe zone
+      if (pd > 12 || this.realm.inSafe(t.x, t.z)) { rb.mode = 'wander'; rb.target = null; } // the town is a safe zone
       else if (pd < 1.5) {
         rb.mode = 'attack';
         if (now - rb.atkT > CFG.RABBIT_ATK_MS) {
@@ -731,7 +732,7 @@ export class Room {
         rb.mode = 'chase';
         const sp = 2.6 * dt;
         const nx = rb.x + (pdx / pd) * sp, nz = rb.z + (pdz / pd) * sp;
-        if (!inSafeZone(nx, nz)) { rb.x = nx; rb.z = nz; }
+        if (!this.realm.inSafe(nx, nz)) { rb.x = nx; rb.z = nz; }
       }
     }
   }

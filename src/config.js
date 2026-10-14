@@ -1,10 +1,14 @@
 import { normalizeSeed } from '../shared/data.js';
+import { realmOf } from '../shared/realm.js';
 
 // World seed comes from ?seed=N (the travel portal navigates to it).
 export const SEED = (() => {
   const m = location.search.match(/[?&]seed=(-?\d+)/);
   return m ? normalizeSeed(parseInt(m[1], 10)) : 7;
 })();
+
+// Which tier we are in: spawn point, portal, safe zone, map size (shared/realm.js).
+export const REALM = realmOf(SEED);
 
 const HOSTED_SERVER = 'night-world-mmo-live.onrender.com';
 const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
