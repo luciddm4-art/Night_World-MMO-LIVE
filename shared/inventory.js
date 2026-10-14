@@ -1,6 +1,6 @@
 // Pure inventory / stats logic. The server owns the inventory; these helpers
 // never touch the DOM or the network, so they are easy to test.
-import { CFG, ITEMS, EQUIP_SLOTS, SLOT_ACCEPTS, ARMOR_STATS, LEGACY_REFUND } from './data.js';
+import { CFG, ITEMS, EQUIP_SLOTS, STACK_SLOTS, SLOT_ACCEPTS, ARMOR_STATS, LEGACY_REFUND } from './data.js';
 
 export function newInv() {
   const eq = {};
@@ -60,10 +60,11 @@ export function addItem(inv, id, n) {
 }
 
 export function computeStats(inv) {
-  let hpMult = 1, dmg = 1, haste = 0, def = 0;
+  let hpMult = 1, dmg = 1, haste = 0, def = 0, speed = 0;
   for (const slot of EQUIP_SLOTS) {
     const it = inv.eq[slot];
     if (!it) continue;
+    if (slot === 'foot' && SLOT_ACCEPTS.foot.includes(it.id)) speed += CFG.BOOT_SPEED; // every pair of boots, same bonus
     const st = ARMOR_STATS[it.id];
     if (!st) continue;
     if (st.hp) hpMult += st.hp;
@@ -71,7 +72,7 @@ export function computeStats(inv) {
     if (st.haste) haste += st.haste;
     if (st.def) def += st.def;
   }
-  return { maxHp: Math.round(CFG.PLAYER_BASE_HP * hpMult), dmg, haste, def };
+  return { maxHp: Math.round(CFG.PLAYER_BASE_HP * hpMult), dmg, haste, def, speed };
 }
 
 // Equip the item in bag slot i into the first slot that accepts it, swapping any
@@ -83,6 +84,23 @@ export function equipFromBag(inv, i) {
     if (!SLOT_ACCEPTS[slot].includes(it.id)) continue;
     const work = cloneInv(inv);
     const cur = work.eq[slot];
+    if (STACK_SLOTS.includes(slot)) {
+      // potions and food go in as the whole stack; the same item merges into what is already there
+      if (cur && cur.id === it.id) {
+        const t = Math.min(CFG.STACK_MAX - cur.n, it.n);
+        if (t <= 0) return null;
+        cur.n += t;
+        work.slots[i].n -= t;
+        if (work.slots[i].n <= 0) work.slots[i] = null;
+      } else {
+        work.eq[slot] = { id: it.id, n: it.n };
+        work.slots[i] = null;
+        if (cur && !addItem(work, cur.id, cur.n)) return null;
+      }
+      inv.eq = work.eq;
+      inv.slots = work.slots;
+      return slot;
+    }
     work.eq[slot] = { id: it.id, n: 1 };
     work.slots[i].n--;
     if (work.slots[i].n <= 0) work.slots[i] = null;
@@ -115,7 +133,9 @@ export function sanitizeInv(raw) {
   if (raw.eq && typeof raw.eq === 'object') {
     for (const slot of EQUIP_SLOTS) {
       const e = raw.eq[slot];
-      if (e && SLOT_ACCEPTS[slot].includes(e.id)) inv.eq[slot] = { id: e.id, n: 1 };
+      if (!e || !SLOT_ACCEPTS[slot].includes(e.id)) continue;
+      const n = STACK_SLOTS.includes(slot) && Number.isInteger(e.n) && e.n > 0 ? Math.min(e.n, CFG.STACK_MAX) : 1;
+      inv.eq[slot] = { id: e.id, n };
     }
   }
   // Items that no longer exist (gloves) are refunded as refined materials, so nobody loses value.

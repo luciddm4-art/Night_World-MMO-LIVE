@@ -3,9 +3,9 @@
 // tree/node is currently gatherable comes from the server via S.nodeQty.
 import { CFG } from '../shared/data.js';
 import { createWorld } from '../shared/world.js';
-import { SEED } from './config.js';
+import { SEED, REALM } from './config.js';
 import { S, nodeQty } from './state.js';
-import { T, scene, tex } from './scene.js';
+import { T, scene, tex, smooth } from './scene.js';
 import { isFree as sharedFree } from '../shared/collision.js';
 
 const { CS, SEG, VR } = CFG;
@@ -13,17 +13,66 @@ export const world = createWorld(SEED);
 export const hgt = world.hgt;
 export const chunks = {};
 
-const gmat = new T.MeshLambertMaterial({ map: tex([40, 70, 42], 0, 8), flatShading: true, vertexColors: true });
+const snowy = REALM.id === 't2';
+// Low-poly: no texture. Every little triangle gets one flat colour of its own (by height, slope and a bit of chance).
+const gmat = smooth ? new T.MeshLambertMaterial({ flatShading: true, vertexColors: true }) : new T.MeshLambertMaterial({ map: snowy ? tex([236, 241, 248], 0, 8) : tex([40, 70, 42], 0, 8), flatShading: true, vertexColors: true });
+
+const lerp = (a, b, k) => a + (b - a) * k;
+const mix3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+const sm = (a, b, x) => { x = Math.min(1, Math.max(0, (x - a) / (b - a))); return x * x * (3 - 2 * x); };
+// colour of one triangle: centre (x, y, z) and how steep it is (0 flat .. 1 sheer)
+const GRASS_LOW = [0.17, 0.28, 0.24], GRASS = [0.22, 0.36, 0.22], GRASS_HI = [0.34, 0.4, 0.25], ROCK = [0.42, 0.41, 0.42];
+function faceColour(x, y, z, steep) {
+  const n = world.vn(x * 0.9 + 3, z * 0.9 + 7); // per-triangle chance
+  let c;
+  if (world.tint) { // Frostfall
+    const t = world.tint(x, z, y);
+    c = [t[0], t[1], t[2]];
+  } else {
+    c = y <= 0.3 ? GRASS_LOW : mix3(GRASS, GRASS_HI, sm(2, 24, y));
+    c = mix3(c, ROCK, sm(0.22, 0.5, steep));
+  }
+  const v = 0.9 + n * 0.2;
+  return [c[0] * v, c[1] * v, c[2] * v];
+}
+
+function mkChunkSmooth(cx, cz) {
+  let g = new T.PlaneGeometry(CS, CS, SEG, SEG);
+  g.rotateX(-Math.PI / 2);
+  g.translate(cx * CS + CS / 2, 0, cz * CS + CS / 2);
+  let p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, hgt(p.getX(i), p.getZ(i)));
+  g = g.toNonIndexed();
+  g.computeVertexNormals(); // flat: one normal per triangle
+  p = g.attributes.position;
+  const nrm = g.attributes.normal, cols = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i += 3) {
+    const x = (p.getX(i) + p.getX(i + 1) + p.getX(i + 2)) / 3, y = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3, z = (p.getZ(i) + p.getZ(i + 1) + p.getZ(i + 2)) / 3;
+    const c = faceColour(x, y, z, 1 - Math.abs(nrm.getY(i)));
+    for (let k = 0; k < 3; k++) { cols[(i + k) * 3] = c[0]; cols[(i + k) * 3 + 1] = c[1]; cols[(i + k) * 3 + 2] = c[2]; }
+  }
+  g.setAttribute('color', new T.BufferAttribute(cols, 3));
+  const m = new T.Mesh(g, gmat);
+  scene.add(m);
+  return m;
+}
 
 function mkChunk(cx, cz) {
+  if (smooth) return mkChunkSmooth(cx, cz);
   const g = new T.PlaneGeometry(CS, CS, SEG, SEG);
   g.rotateX(-Math.PI / 2);
   g.translate(cx * CS + CS / 2, 0, cz * CS + CS / 2);
   const p = g.attributes.position, cols = [];
   for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), z = p.getZ(i), v = 0.75 + world.vn(x * 0.3, z * 0.3) * 0.4;
-    p.setY(i, hgt(x, z));
-    cols.push(v, v, v);
+    const x = p.getX(i), z = p.getZ(i), y = hgt(x, z);
+    p.setY(i, y);
+    if (world.tint) { // Frostfall: ice, rock, snow and pine floor by place and slope
+      const c = world.tint(x, z, y), v = 0.9 + world.vn(x * 0.3, z * 0.3) * 0.16;
+      cols.push(c[0] * v, c[1] * v, c[2] * v);
+    } else {
+      const v = 0.75 + world.vn(x * 0.3, z * 0.3) * 0.4;
+      cols.push(v, v, v);
+    }
   }
   g.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
   g.computeVertexNormals();
@@ -53,8 +102,9 @@ function mkOre() {
 
 const MAXT = 3400;
 const trunk = new T.InstancedMesh(new T.CylinderGeometry(0.35, 0.5, 3, 5), new T.MeshLambertMaterial({ color: 0x3a2a1c }), MAXT);
-const fol = new T.InstancedMesh(new T.ConeGeometry(2.4, 4.5, 6), new T.MeshLambertMaterial({ color: 0x2d5236, flatShading: true }), MAXT);
-const fol2 = new T.InstancedMesh(new T.ConeGeometry(1.7, 3.8, 6), new T.MeshLambertMaterial({ color: 0x35603f, flatShading: true }), MAXT);
+const fol = new T.InstancedMesh(new T.ConeGeometry(2.4, 4.5, 6), new T.MeshLambertMaterial({ color: snowy ? 0x2f5d57 : 0x2d5236, flatShading: true }), MAXT);
+const fol2 = new T.InstancedMesh(new T.ConeGeometry(1.7, 3.8, 6), new T.MeshLambertMaterial({ color: snowy ? 0xdbe8f1 : 0x35603f, flatShading: true }), MAXT);
+const tcol = new T.Color();
 const tm = new T.Matrix4(), tq = new T.Quaternion(), tsv = new T.Vector3(), tp = new T.Vector3();
 trunk.frustumCulled = fol.frustumCulled = fol2.frustumCulled = false;
 scene.add(trunk, fol, fol2);
@@ -173,12 +223,18 @@ export function updateWorld() {
         tm.compose(tp.set(x, y + 1.5 * k2, z), tq, tsv); trunk.setMatrixAt(n, tm);
         tm.compose(tp.set(x, y + 4.2 * k2, z), tq, tsv); fol.setMatrixAt(n, tm);
         tm.compose(tp.set(x, y + 6.4 * k2, z), tq, tsv); fol2.setMatrixAt(n, tm);
+        if (smooth) { // every tree a slightly different green
+          const hv = ((hash(tk) >>> 0) % 997) / 997, v = 0.8 + hv * 0.4;
+          tcol.setRGB(v, v * (0.94 + hv * 0.12), v * (1.06 - hv * 0.12));
+          fol.setColorAt(n, tcol); fol2.setColorAt(n, tcol);
+        }
         n++;
       }
     }
   }
   trunk.count = fol.count = fol2.count = n;
   trunk.instanceMatrix.needsUpdate = fol.instanceMatrix.needsUpdate = fol2.instanceMatrix.needsUpdate = true;
+  if (fol.instanceColor) fol.instanceColor.needsUpdate = fol2.instanceColor.needsUpdate = true;
 }
 
 // Can the player stand here? (hall walls, stations, portal, standing trees)

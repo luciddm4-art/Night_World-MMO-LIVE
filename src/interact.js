@@ -1,5 +1,6 @@
 // "Use" button / E key: stations, portal, gathering (with a cast bar), donkey.
-import { STATIONS, STATION_Z, PORTAL, ITEMS, CFG } from '../shared/data.js';
+import { STATIONS, STATION_Z, ITEMS, CFG } from '../shared/data.js';
+import { REALM } from './config.js';
 import { S, nodeQty } from './state.js';
 import { send } from './net.js';
 import { chunks, world, treeReady, setTreeShake, setNodeShake, hgt } from './terrain.js';
@@ -99,10 +100,13 @@ export function updateGather(now) {
 function findInteract() {
   const P = S.P;
   let best = null, bd = 2.6;
-  for (const st of STATIONS) {
-    const d = Math.hypot(P.x - st.x, P.z - STATION_Z);
-    if (d < 2.4 && d < bd) { bd = d; best = { kind: 'station', st }; }
+  if (REALM.hall) {
+    for (const st of STATIONS) {
+      const d = Math.hypot(P.x - st.x, P.z - STATION_Z);
+      if (d < 2.4 && d < bd) { bd = d; best = { kind: 'station', st }; }
+    }
   }
+  const PORTAL = REALM.portal;
   const pd = Math.hypot(P.x - PORTAL.x, P.z - PORTAL.z);
   if (pd < PORTAL.r && pd < bd) { bd = pd; best = { kind: 'portal' }; }
   const dm = getDonkey();

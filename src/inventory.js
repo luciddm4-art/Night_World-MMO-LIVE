@@ -1,8 +1,9 @@
-import { ITEMS, EQUIP_SLOTS, SLOT_LABEL, SLOT_ACCEPTS, ARMOR_STATS, RECIPES, WEAPONS, STATIONS } from '../shared/data.js';
+import { CFG, fmtCoins, ITEMS, EQUIP_SLOTS, SLOT_LABEL, SLOT_ACCEPTS, ARMOR_STATS, RECIPES, WEAPONS, STATIONS } from '../shared/data.js';
 import { sfx } from './audio.js';
 import { S } from './state.js';
 import { send } from './net.js';
 import { openNearestStation } from './panel.js';
+import { describeConsumable, skillLinesFor } from './skills.js';
 
 const invEl = document.getElementById('inv');
 const invSum = document.getElementById('invsum');
@@ -13,7 +14,7 @@ export function toggleInv() {
   invEl.classList.toggle('open', invOpen);
 }
 
-const SLOT_NAME = { head: 'Head', chest: 'Chest', foot: 'Feet', main: 'Main hand', off: 'Off hand', mount: 'Mount' };
+const SLOT_NAME = { head: 'Head', chest: 'Chest', foot: 'Feet', main: 'Main hand', off: 'Off hand', mount: 'Mount', potion: 'Potion slot', food: 'Food slot' };
 const STAT_NAME = { hp: 'max HP', dmg: 'damage', def: 'defence', haste: 'attack speed' };
 
 // Hover / long-press text for an item: what it is and what it does.
@@ -29,6 +30,9 @@ export function tipFor(id, equipped = false) {
       lines.push('Damage ' + w.dmg + '  Reach ' + w.reach + '  Speed ' + (w.cd / 1000).toFixed(2) + 's');
       lines.push(w.id === 'sword' ? 'Wide arc: hits everything in front' : w.id === 'bow' ? 'Aim at one target; arrow hits the nearest' : 'Fireball: also scorches rabbits next to the target (' + w.splash + ' dmg)');
     }
+    if (slot === 'foot') lines.push('+' + Math.round(CFG.BOOT_SPEED * 100) + '% walking speed (on foot)');
+    lines.push(...describeConsumable(id) || []);
+    lines.push(...skillLinesFor(id));
     const st = ARMOR_STATS[id];
     if (st) lines.push(Object.keys(st).map((k) => '+' + Math.round(st[k] * 100) + '% ' + STAT_NAME[k]).join(', '));
     const rec = RECIPES.find((r) => r.out === id);
@@ -52,6 +56,7 @@ export function renderInv() {
     const it = S.inv.eq[s];
     el.classList.toggle('filled', !!it);
     el.textContent = it ? (ITEMS[it.id] ? ITEMS[it.id].s : '?') : SLOT_LABEL[s];
+    if (it && it.n > 1) el.insertAdjacentHTML('beforeend', '<span class="n">' + it.n + '</span>');
     el.title = it ? tipFor(it.id, true) : SLOT_NAME[s] + ' slot (empty)';
   });
   let h = '';
@@ -68,6 +73,7 @@ export function renderInv() {
     const n = count(id);
     if (n > 0) parts.push(ITEMS[id].s + ' ' + n);
   });
+  document.getElementById('coins').textContent = 'Coins ' + fmtCoins(S.coins);
   invSum.textContent = parts.length ? '  ' + parts.join('  ') : '';
 }
 

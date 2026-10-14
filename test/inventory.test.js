@@ -54,7 +54,7 @@ test('unequip needs room', () => {
 
 test('stats are derived from equipment', () => {
   const inv = newInv();
-  assert.deepEqual(computeStats(inv), { maxHp: 1200, dmg: 1, haste: 0, def: 0 });
+  assert.deepEqual(computeStats(inv), { maxHp: 1200, dmg: 1, haste: 0, def: 0, speed: 0 });
   inv.eq.chest = { id: 'iron_chest', n: 1 };
   inv.eq.chest2 = null;
   const s = computeStats(inv);

@@ -3,13 +3,15 @@
 // Room knows nothing about sockets: players have a send(obj) function, and the
 // clock/RNG are injectable, which keeps it fully unit-testable.
 import {
-  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, CHAT_MAX_LEN, REWARD_SLOTS, inSafeZone, weaponOf, weaponIdOf,
+  CFG, ITEMS, RECIPES, STATIONS, STATION_Z, STATION_RANGE, EQUIP_SLOTS, STACK_SLOTS, POTIONS, FOODS, CHAT_MAX_LEN, REWARD_SLOTS, weaponOf, weaponIdOf,
 } from '../shared/data.js';
+import { SKILLS, SKILL_KEYS, SKILL_STATS, skillIdsFor } from '../shared/skills.js';
 import { createWorld } from '../shared/world.js';
 import { sweep, isFree } from '../shared/collision.js';
 import * as Inv from '../shared/inventory.js';
 import { round2 } from './player.js';
 import { encodeRabbit } from '../shared/wire.js';
+import { Trades } from './trade.js';
 
 const SLACK = 2.0; // positional tolerance for network lag (units)
 const STATION_SLACK = 1.0;
@@ -37,7 +39,9 @@ export class Room {
     this.now = now;
     this.rng = rng;
     this.world = createWorld(seed);
+    this.realm = this.world.realm; // spawn point, safe zone, solids (Tier 1 town or Frostfall)
     this.players = new Map(); // id -> Player
+    this.trades = new Trades(this);
     this.depleted = new Map(); // node/tree id -> {qty, readyAt}
     this.rabbits = new Map(); // id -> rabbit
     this.deadUntil = new Map(); // rabbit id -> respawn time
@@ -51,7 +55,7 @@ export class Room {
   // A saved position can end up inside a wall or house after the world changed: move such players to the plaza.
   ensureStandable(p) {
     if (isFree(this.world, (k) => !this.isDepleted(k), p.x, p.z)) return false;
-    p.setSpawn(this.rng);
+    p.setSpawn(this.rng, this.realm.spawn);
     p.mounted = false;
     p.donkey = null;
     return true;
@@ -65,11 +69,17 @@ export class Room {
     p.known = new Set();
     p.snapState = null; // protocol-2 delta bookkeeping restarts with every join
     p.y = Math.max(0.13, this.world.hgt(p.x, p.z));
+    if (p.pendingFood) { // a food buff from a previous session keeps the time it had left
+      p.food = { id: p.pendingFood.id, until: p.joinedAt + p.pendingFood.ms };
+      p.pendingFood = null;
+      p.recalc();
+    }
     this.ensureRabbits();
     return this.welcome(p);
   }
 
   removePlayer(p) {
+    this.trades.cancel(p, p.name + ' left the game');
     this.players.delete(p.id);
     p.gather = null;
     if (this.players.size === 0) this.emptySince = this.now();
@@ -83,7 +93,9 @@ export class Room {
       seed: this.seed,
       you: {
         x: round2(p.x), z: round2(p.z), r: round2(p.r), c: p.color,
-        ...p.view(this.now()), inv: p.inv, st: this.statsOf(p),
+        ...p.view(this.now()), inv: p.inv, st: this.statsOf(p), coins: p.coins,
+        mana: { v: round1(p.mana), max: p.maxMana, rate: p.manaRegen() },
+        buffs: this.buffsOf(p, this.now()),
       },
       depleted: [...this.depleted].map(([id, s]) => [id, s.qty]),
       chat: this.chatLog.slice(-20),
@@ -92,7 +104,14 @@ export class Room {
   }
 
   statsOf(p) {
-    return { maxHp: p.maxHp, dmg: p.stats.dmg, haste: p.stats.haste, def: p.stats.def };
+    const fb = p.foodBuff();
+    return {
+      maxHp: p.maxHp,
+      dmg: round2(p.stats.dmg * (1 + (fb.dmg || 0))),
+      haste: p.stats.haste,
+      def: round2(1 - (1 - p.stats.def) * (1 - Math.min(0.9, fb.dr || 0))),
+      speed: p.stats.speed, // boots: walking speed bonus (the page applies it to its own movement)
+    };
   }
 
   // ------------------------------------------------------------ messaging
@@ -108,7 +127,7 @@ export class Room {
   fail(p, m) { p.send({ t: 'fail', m }); }
   sendInv(p) {
     p.dirty = true;
-    p.send({ t: 'inv', inv: p.inv, st: this.statsOf(p), hp: Math.round(p.hp) });
+    p.send({ t: 'inv', inv: p.inv, st: this.statsOf(p), hp: Math.round(p.hp), c: p.coins });
   }
 
   handle(p, m) {
@@ -125,6 +144,12 @@ export class Room {
       case 'mount': return this.onMount(p);
       case 'dismount': return this.onDismount(p);
       case 'chat': return this.onChat(p, m);
+      case 'skill': return this.onSkill(p, m);
+      case 'use': return this.onUse(p, m);
+      case 'scancel': return this.cancelSpell(p);
+      case 'inspect': return this.onInspect(p, m);
+      case 'tg': return this.onTarget(p, m);
+      case 'trade': return this.onTrade(p, m);
       default: return undefined;
     }
   }
@@ -133,6 +158,7 @@ export class Room {
   onPos(p, m) {
     if (!isNum(m.x) || !isNum(m.z)) return;
     const now = this.now();
+    if (p.tpUntil && now < p.tpUntil) return; // just teleported: ignore the packets that were already on their way
     const x = clamp(m.x, 1e6), z = clamp(m.z, 1e6);
     if (isNum(m.r)) p.r = clamp(m.r, 10);
 
@@ -140,7 +166,8 @@ export class Room {
     // no matter how many (or how few) position packets you send.
     const dtS = Math.max(0, (now - p.lastPosT) / 1000);
     p.lastPosT = now;
-    const vmax = (p.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED) * 1.15;
+    // (the 15% slack also covers the donkey's +10% gallop, which the page tracks by itself)
+    const vmax = (p.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED * (1 + p.stats.speed)) * 1.15;
     p.moveBudget = Math.min(vmax * 1.5, p.moveBudget + vmax * dtS);
     const d = dist(x, z, p.x, p.z);
     let nx = x, nz = z;
@@ -198,7 +225,7 @@ export class Room {
   }
 
   onGather(p, m) {
-    if (p.gather) return this.fail(p, 'Already busy');
+    if (p.gather || p.spell) return this.fail(p, 'Already busy');
     const tgt = this.resolveTarget(m.kind, m.id);
     if (!tgt) return this.fail(p, 'Nothing to gather there');
     if (dist(p.x, p.z, tgt.x, tgt.z) > tgt.range + SLACK) return this.fail(p, 'Too far away');
@@ -246,7 +273,7 @@ export class Room {
 
   // ------------------------------------------------------------ combat
   onAttack(p, m) {
-    if (p.mounted) return;
+    if (p.mounted || p.spell) return;
     const now = this.now();
     const wp = weaponOf(p.inv.eq); // fists, sword, bow or fire staff: reach / damage / cooldown / aim all come from the weapon
     const cd = wp.cd * (1 - p.stats.haste);
@@ -255,7 +282,7 @@ export class Room {
     p.a = (p.a + 1) % 1000000;
     if (isNum(m.r)) p.r = clamp(m.r, 10);
     const fx = Math.sin(p.r), fz = Math.cos(p.r);
-    const dmg = Math.round(wp.dmg * p.stats.dmg);
+    const base = wp.dmg * p.dmgMult(now);
     const reach = wp.reach + 0.6; // +0.6: lag tolerance
     const inCone = [];
     for (const rb of this.rabbits.values()) {
@@ -273,9 +300,9 @@ export class Room {
       targets = [inCone[0]];
     }
     const struck = new Set();
-    for (const { rb } of targets) { struck.add(rb.id); this.damageRabbit(rb, dmg, p, now, wp.id, false); }
+    for (const { rb } of targets) { struck.add(rb.id); this.damageRabbit(rb, Math.round(base * (1 + this.takeMark(p, now))), p, now, wp.id, false); }
     if (wp.splash > 0) { // fire: scorches rabbits standing near the one that was hit
-      const c = targets[0].rb, sd = Math.round(wp.splash * p.stats.dmg);
+      const c = targets[0].rb, sd = Math.round(wp.splash * p.dmgMult(now));
       for (const rb of this.rabbits.values()) {
         if (rb.dead || struck.has(rb.id)) continue;
         if (dist(rb.x, rb.z, c.x, c.z) <= wp.splashR) this.damageRabbit(rb, sd, p, now, wp.id, true);
@@ -321,6 +348,7 @@ export class Room {
     if (!Number.isInteger(i) || i < 0 || i >= CFG.INV_SLOTS || !p.inv.slots[i]) return;
     const id = p.inv.slots[i].id;
     if (!Inv.equipFromBag(p.inv, i)) return this.fail(p, 'Cannot equip that');
+    this.cancelSpell(p);
     p.recalc();
     this.toast(p, 'Equipped ' + ITEMS[id].n);
     this.checkDonkeyReward(p);
@@ -330,6 +358,7 @@ export class Room {
   onUnequip(p, m) {
     if (!EQUIP_SLOTS.includes(m.slot) || !p.inv.eq[m.slot]) return;
     if (!Inv.unequip(p.inv, m.slot)) return this.fail(p, 'Inventory full');
+    this.cancelSpell(p);
     if (m.slot === 'mount') {
       p.mounted = false;
       p.donkey = null;
@@ -351,7 +380,7 @@ export class Room {
   // ------------------------------------------------------------ mount
   mountWait(p) { return Math.max(0, p.mountReadyAt - this.now()); }
   onMount(p) {
-    if (p.mounted || p.gather) return;
+    if (p.mounted || p.gather || p.spell) return;
     if (!p.hasMount()) return this.fail(p, 'No donkey equipped');
     const wait = this.mountWait(p);
     if (wait > 0) return this.fail(p, 'The donkey is recovering (' + Math.ceil(wait / 1000) + 's)');
@@ -388,6 +417,228 @@ export class Room {
     p.donkey = { x: p.x + Math.cos(p.r) * 1.2, z: p.z + Math.sin(p.r) * 1.2 };
     p.dirty = true;
     this.toast(p, 'Dismounted');
+  }
+
+  // ------------------------------------------------------------ mana, skills, potions and food
+  sendMana(p) { p.send({ t: 'mana', v: round1(p.mana), max: p.maxMana, rate: p.manaRegen() }); }
+  buffsOf(p, now) {
+    const seen = new Map();
+    for (const b of p.buffs) if (b.until > now && !seen.has(b.id)) seen.set(b.id, { id: b.id, ms: Math.round(b.until - now) });
+    return { list: [...seen.values()], food: p.food && p.food.until > now ? { id: p.food.id, ms: Math.round(p.food.until - now) } : null };
+  }
+  sendBuffs(p, now) { p.send({ t: 'buffs', ...this.buffsOf(p, now) }); }
+
+  // your next 'mark' hits do extra damage; returns the bonus (0.3 = +30%) and uses one hit up
+  takeMark(p, now) {
+    const b = p.buffs.find((x) => x.stat === 'mark' && x.until > now && x.hits > 0);
+    if (!b) return 0;
+    b.hits--;
+    if (b.hits <= 0) { p.buffs = p.buffs.filter((x) => x !== b); this.sendBuffs(p, now); }
+    return b.value;
+  }
+
+  cancelSpell(p, why) {
+    if (!p.spell) return;
+    p.spell = null;
+    p.send({ t: 'scancel' });
+    if (why) this.fail(p, why);
+  }
+
+  onSkill(p, m) {
+    if (!SKILL_KEYS.includes(m.k)) return;
+    const now = this.now();
+    if (p.mounted) return this.fail(p, 'You cannot cast while riding');
+    if (p.gather || p.spell) return this.fail(p, p.spell ? 'Already casting' : 'You are busy');
+    const id = skillIdsFor(p.inv.eq)[m.k];
+    const sk = id && SKILLS[id];
+    if (!sk) return;
+    if (now < p.gcdUntil) return;
+    if (now < (p.cds[id] || 0)) return this.fail(p, sk.n + ' is not ready yet');
+    if (p.mana < sk.mana) return this.fail(p, 'Not enough mana');
+    if (isNum(m.r)) p.r = clamp(m.r, 10);
+    if (sk.cast > 0) {
+      p.spell = { id, key: m.k, start: now, dur: sk.cast, x: p.x, z: p.z };
+      p.gcdUntil = now + CFG.GCD_MS;
+      p.send({ t: 'scast', id, dur: sk.cast });
+      return;
+    }
+    this.castSkill(p, id, sk, now);
+  }
+
+  finishSpell(p, now) {
+    const sp = p.spell;
+    p.spell = null;
+    const sk = SKILLS[sp.id];
+    if (!sk || skillIdsFor(p.inv.eq)[sp.key] !== sp.id) return p.send({ t: 'scancel' });
+    if (p.mana < sk.mana) { p.send({ t: 'scancel' }); return this.fail(p, 'Not enough mana'); }
+    this.castSkill(p, sp.id, sk, now);
+  }
+
+  castSkill(p, id, sk, now) {
+    p.mana -= sk.mana;
+    p.cds[id] = now + sk.cd;
+    p.gcdUntil = now + CFG.GCD_MS;
+    let buffed = false;
+    for (const e of sk.effects || []) {
+      if (e.kind === 'damage') this.fxDamage(p, e, now);
+      else if (e.kind === 'heal') this.fxHeal(p, e, now);
+      else if (e.kind === 'buff') buffed = this.fxBuff(p, id, e, now) || buffed;
+      else if (e.kind === 'dash') this.fxDash(p, e);
+    }
+    this.sendMana(p);
+    p.send({ t: 'cd', id, ms: sk.cd });
+    if (buffed) this.sendBuffs(p, now);
+    this.broadcastNear(p.x, p.z, 60, { t: 'skfx', by: p.id, id, r: round2(p.r) });
+  }
+
+  fxDamage(p, e, now) {
+    const wp = weaponOf(p.inv.eq);
+    const fx = Math.sin(p.r), fz = Math.cos(p.r);
+    const range = (isNum(e.range) ? e.range : wp.reach) + 0.6;
+    const circle = e.shape === 'circle';
+    const cone = isNum(e.cone) ? e.cone : 0.3;
+    const hit = [];
+    for (const rb of this.rabbits.values()) {
+      if (rb.dead) continue;
+      const dx = rb.x - p.x, dz = rb.z - p.z, d = Math.hypot(dx, dz);
+      if (d > range) continue;
+      if (!circle && (dx * fx + dz * fz) / Math.max(d, 0.001) < cone) continue;
+      hit.push({ rb, d });
+    }
+    hit.sort((a, b) => a.d - b.d);
+    const base = wp.dmg * p.dmgMult(now) * (isNum(e.mult) ? e.mult : 1);
+    for (const { rb } of hit.slice(0, e.max > 0 ? e.max : hit.length)) {
+      this.damageRabbit(rb, Math.max(1, Math.round(base * (1 + this.takeMark(p, now)))), p, now, wp.id, false);
+    }
+  }
+
+  fxHeal(p, e, now) {
+    const total = isNum(e.amount) ? e.amount : (isNum(e.pct) ? e.pct * p.maxHp : 0);
+    if (total <= 0) return;
+    if (e.over > 0) {
+      p.hots.push({ perSec: total / e.over, until: now + e.over * 1000 });
+      return;
+    }
+    p.hp = Math.min(p.maxHp, p.hp + total);
+    p.send({ t: 'heal', d: Math.round(total) });
+  }
+
+  fxBuff(p, id, e, now) {
+    if (!SKILL_STATS.includes(e.stat) || !isNum(e.value) || !(e.dur > 0)) return false;
+    p.buffs = p.buffs.filter((b) => !(b.id === id && b.stat === e.stat)); // casting it again refreshes it
+    p.buffs.push({ id, stat: e.stat, value: e.value, until: now + e.dur, hits: e.hits > 0 ? e.hits : 1 });
+    return true;
+  }
+
+  // Admin teleport: puts the player at (x, z) at once. Returns the spot, or null if it is outside the map limit.
+  teleport(p, x, z) {
+    if (!isNum(x) || !isNum(z) || Math.abs(x) > this.realm.limit || Math.abs(z) > this.realm.limit) return null;
+    const now = this.now();
+    this.cancelGather(p);
+    p.x = x; p.z = z;
+    p.y = Math.max(0.13, this.world.hgt(x, z));
+    p.moveBudget = 0;
+    p.lastPosT = now;
+    p.tpUntil = now + 600;
+    p.send({ t: 'pos', x: round2(x), z: round2(z) });
+    return { x: round2(x), z: round2(z) };
+  }
+
+  fxDash(p, e) {
+    const dist2 = isNum(e.dist) ? e.dist : 0;
+    const nx = p.x + Math.sin(p.r) * dist2, nz = p.z + Math.cos(p.r) * dist2;
+    const sw = sweep(this.world, (k) => !this.isDepleted(k), p.x, p.z, nx, nz);
+    p.x = sw.blocked ? sw.x : nx;
+    p.z = sw.blocked ? sw.z : nz;
+    p.y = Math.max(0.13, this.world.hgt(p.x, p.z));
+    p.send({ t: 'pos', x: round2(p.x), z: round2(p.z) });
+  }
+
+  // per-player, every tick: mana regen, spell progress, buff / HoT / food expiry
+  tickMagic(p, dt, now) {
+    if (p.spell) {
+      if (dist(p.x, p.z, p.spell.x, p.spell.z) > CFG.SPELL_MOVE_CANCEL) this.cancelSpell(p, 'Cast interrupted');
+      else if (now - p.spell.start >= p.spell.dur) this.finishSpell(p, now);
+    }
+    if (p.mana < p.maxMana) p.mana = Math.min(p.maxMana, p.mana + p.manaRegen() * dt);
+    if (p.hots.length) p.hots = p.hots.filter((h) => h.until > now);
+    if (p.buffs.length) {
+      const live = p.buffs.filter((b) => b.until > now && !(b.stat === 'shield' && b.value <= 0));
+      if (live.length !== p.buffs.length) { p.buffs = live; this.sendBuffs(p, now); }
+    }
+    if (p.food && p.food.until <= now) {
+      p.food = null;
+      p.recalc();
+      this.toast(p, 'Your food buff wore off');
+      this.sendBuffs(p, now);
+      this.sendMana(p);
+      p.send({ t: 'st', st: this.statsOf(p) });
+      p.dirty = true;
+    }
+  }
+
+  // Potion and food buttons. The server checks everything, so a modified page cannot drink faster.
+  onUse(p, m) {
+    if (!STACK_SLOTS.includes(m.slot)) return;
+    const it = p.inv.eq[m.slot];
+    if (!it) return this.fail(p, m.slot === 'potion' ? 'No potion equipped' : 'No food equipped');
+    const now = this.now();
+    if (m.slot === 'potion') {
+      const def = POTIONS[it.id];
+      if (!def) return;
+      if (now < p.potionReadyAt) return this.fail(p, 'Potion is not ready yet');
+      const hp = def.heal || def.healPct, mp = def.mana;
+      const hpFull = p.hp >= p.maxHp - 0.5, mpFull = p.mana >= p.maxMana - 0.5;
+      if ((!hp || hpFull) && (!mp || mpFull)) return this.fail(p, hp && !mp ? 'Your health is already full' : mp && !hp ? 'Your mana is already full' : 'You are already full');
+      if (hp) {
+        const amt = def.heal || def.healPct * p.maxHp;
+        p.hp = Math.min(p.maxHp, p.hp + amt);
+        p.send({ t: 'heal', d: Math.round(amt) });
+      }
+      if (mp) { p.mana = Math.min(p.maxMana, p.mana + mp); this.sendMana(p); }
+      const cd = isNum(def.cd) ? def.cd : CFG.POTION_CD_MS;
+      p.potionReadyAt = now + cd;
+      p.send({ t: 'cd', id: 'potion', ms: cd });
+    } else {
+      const def = FOODS[it.id];
+      if (!def) return;
+      p.food = { id: it.id, until: now + CFG.FOOD_MS };
+      p.recalc();
+      this.toast(p, 'You ate ' + ITEMS[it.id].n + ' — buff for ' + CFG.FOOD_MS / 60000 + ' minutes');
+      this.sendBuffs(p, now);
+      this.sendMana(p);
+    }
+    it.n--;
+    if (it.n <= 0) p.inv.eq[m.slot] = null;
+    this.sendInv(p);
+  }
+
+  // ------------------------------------------------------------ targets, inspecting, trading
+  // Tapping a player marks them as your target; the page asks for their HP now and then ('tg', tiny)
+  onTarget(p, m) {
+    const t = this.players.get(String(m.id));
+    if (!t) return p.send({ t: 'tg', id: String(m.id), gone: 1 });
+    p.send({ t: 'tg', id: t.id, hp: Math.round(t.hp), mh: t.maxHp });
+  }
+  // The Inspect button: what another player wears (equipment only, never their bag or coins)
+  onInspect(p, m) {
+    const t = this.players.get(String(m.id));
+    if (!t) return this.fail(p, 'That player is not here');
+    const eq = {};
+    for (const s of EQUIP_SLOTS) if (t.inv.eq[s]) eq[s] = { id: t.inv.eq[s].id, n: t.inv.eq[s].n };
+    p.send({ t: 'inspected', id: t.id, name: t.name, hp: Math.round(t.hp), mh: t.maxHp, mt: t.mounted ? 1 : 0, eq, st: this.statsOf(t) });
+  }
+  onTrade(p, m) {
+    switch (m.a) {
+      case 'req': return this.trades.request(p, m);
+      case 'accept': return this.trades.respond(p, true);
+      case 'decline': return this.trades.respond(p, false);
+      case 'offer': return this.trades.offer(p, m);
+      case 'lock': return this.trades.lock(p, m);
+      case 'unlock': return this.trades.unlock(p);
+      case 'cancel': return this.trades.cancel(p, p.name + ' cancelled the trade');
+      default: return undefined;
+    }
   }
 
   // ------------------------------------------------------------ chat
@@ -462,14 +713,14 @@ export class Room {
         if (dl > 0.3) {
           const sp = 1.2 * dt;
           const nx = rb.x + (dx / dl) * sp, nz = rb.z + (dz / dl) * sp;
-          if (!inSafeZone(nx, nz)) { rb.x = nx; rb.z = nz; } else rb.wt = 0; // rabbits never wander into the town
+          if (!this.realm.inSafe(nx, nz)) { rb.x = nx; rb.z = nz; } else rb.wt = 0; // rabbits never wander into the town
         }
         continue;
       }
       const t = this.players.get(rb.target);
       if (!t) { rb.mode = 'wander'; rb.target = null; continue; }
       const pdx = t.x - rb.x, pdz = t.z - rb.z, pd = Math.hypot(pdx, pdz);
-      if (pd > 12 || inSafeZone(t.x, t.z)) { rb.mode = 'wander'; rb.target = null; } // the town is a safe zone
+      if (pd > 12 || this.realm.inSafe(t.x, t.z)) { rb.mode = 'wander'; rb.target = null; } // the town is a safe zone
       else if (pd < 1.5) {
         rb.mode = 'attack';
         if (now - rb.atkT > CFG.RABBIT_ATK_MS) {
@@ -481,12 +732,22 @@ export class Room {
         rb.mode = 'chase';
         const sp = 2.6 * dt;
         const nx = rb.x + (pdx / pd) * sp, nz = rb.z + (pdz / pd) * sp;
-        if (!inSafeZone(nx, nz)) { rb.x = nx; rb.z = nz; }
+        if (!this.realm.inSafe(nx, nz)) { rb.x = nx; rb.z = nz; }
       }
     }
   }
 
   damagePlayer(p, amount, now, by = null) {
+    if (p.hasBuff('invuln', now)) return p.send({ t: 'hurt', d: 0, by });
+    amount *= 1 - p.damageReduction(now);
+    const sh = p.buffs.find((b) => b.stat === 'shield' && b.until > now && b.value > 0);
+    if (sh) { // a shield soaks damage before HP does
+      const soak = Math.min(sh.value, amount);
+      sh.value -= soak;
+      amount -= soak;
+      if (sh.value <= 0) { p.buffs = p.buffs.filter((b) => b !== sh); this.sendBuffs(p, now); }
+      if (amount <= 0) return p.send({ t: 'hurt', d: 0, by });
+    }
     p.hp -= amount;
     p.lastDamageT = now;
     if (p.gather && p.gather.kind === 'mount') this.cancelGather(p); // a bite interrupts the donkey summon
@@ -517,8 +778,12 @@ export class Room {
 
     for (const p of this.players.values()) {
       if (now - p.lastDamageT > CFG.REGEN_COMBAT_LOCK && p.hp < p.maxHp) {
-        p.hp = Math.min(p.maxHp, p.hp + p.maxHp * CFG.REGEN_PER_SEC * dt);
+        p.hp = Math.min(p.maxHp, p.hp + p.maxHp * CFG.REGEN_PER_SEC * p.regenMult() * dt);
       }
+      if (p.hp < p.maxHp && p.hots.length) { // heals over time
+        for (const h of p.hots) p.hp = Math.min(p.maxHp, p.hp + h.perSec * dt);
+      }
+      this.tickMagic(p, dt, now);
       if (p.gather && now - p.gather.start > GATHER_STALE_MS) p.gather = null;
       // Donkey HP: a donkey that dropped to 0 is away for 30 s and returns healed; otherwise it heals 0 -> full in 30 s.
       if (p.mountReadyAt > now) p.mountHp = 0;
