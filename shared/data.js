@@ -31,6 +31,8 @@ export const CFG = {
   REGEN_COMBAT_LOCK: 5000,
   INV_SLOTS: 64,
   STACK_MAX: 99,
+  COINS_MAX: 1e13, // nobody can hold more than this (keeps every sum a safe integer)
+  ADMIN_COINS: 1e10, // one-time grant (10 billion) to an admin account the first time it logs in
   MANA_BASE: 100, // every character has mana; spells spend it
   MANA_REGEN_PER_SEC: 2,
   BOOT_SPEED: 0.4, // any boots: +40% walking speed (not while riding)
@@ -82,6 +84,10 @@ export const FAMILIES = {
   iron: { raw: 'ore', refined: 'iron' },
   leather: { raw: 'hide', refined: 'leather' },
 };
+
+// Items that cannot be traded: the donkey is a reward for completing the starter gear.
+export const SOULBOUND = ['donkey'];
+export const fmtCoins = (n) => Math.floor(Number(n) || 0).toLocaleString('en-US');
 
 export const EQUIP_SLOTS = ['head', 'chest', 'foot', 'main', 'off', 'mount', 'potion', 'food'];
 export const SLOT_LABEL = { head: 'HD', chest: 'CH', foot: 'FT', main: 'MH', off: 'OH', mount: 'MT', potion: 'PT', food: 'FD' };

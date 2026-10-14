@@ -16,6 +16,10 @@ export class Player {
     this.maxHp = this.stats.maxHp;
     this.maxMana = CFG.MANA_BASE;
     this.mana = this.maxMana;
+    this.coins = saved && Number.isSafeInteger(saved.coins) && saved.coins > 0 ? Math.min(saved.coins, CFG.COINS_MAX) : 0; // everyone starts with none
+    this.adminGrant = !!(saved && saved.adminGrant); // the one-time admin coin grant was given
+    this.trade = null; // open trade session (server/trade.js)
+    this.tradeReq = null; // an incoming trade request {from, until}
     this.food = null; // active food buff {id, until}; until is on the room clock and is set when the player joins a room
     this.pendingFood = null; // {id, ms} loaded from a save, turned into `food` by Room.addPlayer
     if (saved && saved.food && FOODS[saved.food.id] && Number.isFinite(saved.food.ms) && saved.food.ms > 0) {
@@ -112,6 +116,8 @@ export class Player {
   toSave(seed, now = Date.now()) {
     return {
       inv: this.inv,
+      coins: this.coins,
+      adminGrant: this.adminGrant,
       food: this.food && this.food.until > now ? { id: this.food.id, ms: Math.round(this.food.until - now) } : this.pendingFood,
       hpRatio: this.maxHp > 0 ? this.hp / this.maxHp : 1,
       color: this.color,

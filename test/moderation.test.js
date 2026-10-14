@@ -168,3 +168,19 @@ test('/give: admins can put an item in their own bag, other players cannot', asy
     [boss, guest].forEach((x) => x.c.ws.terminate());
   } finally { await env.gs.stop(); }
 });
+
+test('coins: new players have none, an admin account gets 10 billion once', async () => {
+  const env = await boot();
+  try {
+    const boss = await join(env, { mode: 'register', name: 'Boss1', pass: 'pw-123456' });
+    const other = await join(env, { mode: 'register', name: 'Plain1', pass: 'pw-123456' });
+    assert.equal(boss.res.you.coins, 10_000_000_000);
+    assert.equal(other.res.you.coins, 0);
+    boss.c.ws.terminate();
+    await new Promise((r) => setTimeout(r, 150));
+    const again = await join(env, { mode: 'login', name: 'Boss1', pass: 'pw-123456' });
+    assert.equal(again.res.t, 'welcome');
+    assert.equal(again.res.you.coins, 10_000_000_000, 'saved, and not granted a second time');
+    [again, other].forEach((x) => x.c.ws.terminate());
+  } finally { await env.gs.stop(); }
+});

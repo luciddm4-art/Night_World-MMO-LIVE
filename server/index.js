@@ -5,7 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE, WORLDS, ITEMS } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS, ITEMS, CFG } from '../shared/data.js';
 import { addItem } from '../shared/inventory.js';
 import { makeFilter, reservedName, parseList, parseCommand } from './moderation.js';
 import { Room } from './room.js';
@@ -382,6 +382,12 @@ export function createGameServer(opts = {}) {
           ws.send(JSON.stringify(obj));
         },
       });
+      if (isAdmin(player) && !player.adminGrant) { // admins get 10 billion coins, once
+        player.coins = Math.min(CFG.COINS_MAX, player.coins + CFG.ADMIN_COINS);
+        player.adminGrant = true;
+        player.dirty = true;
+        cfg.log('ADMIN', player.name, 'received the one-time admin coin grant');
+      }
       player.v2 = m.v === 2; // new clients understand delta snapshots ("d"); old pages keep getting full ones ("s")
       if (!player.restore(saved, seed)) player.setSpawn();
       else room.ensureStandable(player);
