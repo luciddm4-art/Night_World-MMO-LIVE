@@ -158,6 +158,7 @@ export class Room {
     // no matter how many (or how few) position packets you send.
     const dtS = Math.max(0, (now - p.lastPosT) / 1000);
     p.lastPosT = now;
+    // (the 15% slack also covers the donkey's +10% gallop, which the page tracks by itself)
     const vmax = (p.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED * (1 + p.stats.speed)) * 1.15;
     p.moveBudget = Math.min(vmax * 1.5, p.moveBudget + vmax * dtS);
     const d = dist(x, z, p.x, p.z);
