@@ -21,7 +21,7 @@ export function upsertPlayers(list) {
       g.add(tag);
       g.position.set(num(e.x), 0.13, num(e.z));
       scene.add(g);
-      o = S.others[e.id] = { g, col, a: e.a, donkey: null };
+      o = S.others[e.id] = { g, col, a: e.a, donkey: null, name: String(e.n || '?').slice(0, 16) };
     }
     o.tx = num(e.x); o.tz = num(e.z); o.ty = num(e.y); o.tr = num(e.r);
     setHeld(o.g, e.w); // what they hold is visible to everyone

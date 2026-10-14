@@ -19,6 +19,8 @@ import { stepRide, hitRide, rideSpeed } from '../shared/gallop.js';
 import { initMount, updateMountButton, applyMountState, updateDonkey } from './mount.js';
 import { initInteract, checkNear, doInteract, onCast, onFail, cancelGather, updateGather } from './interact.js';
 import { initCombat, tryAttack, bindFigure } from './combat.js';
+import { screenOf, initTarget, onTg, onInspected, pickPlayer, cycleTarget, updateTarget, closeMenu, menuOpen, inspectOpen, closeInspect, clearTarget } from './target.js';
+import { initTrade, onTrade, tradeOpen, cancelTrade, refreshTrade } from './trade.js';
 import { initSkills, refreshSkills, useSkill, useConsumable, updateSkills, onMana, onCd, onBuffs, onScast, onScancel, onSkillFx, hideSpell, cancelSpellByMoving } from './skills.js';
 import { initChat, addChat, openChat, closeChat, isTyping } from './chat.js';
 import { drawMap, isMapBig, setMapBig, toggleMap } from './minimap.js';
@@ -39,6 +41,8 @@ initMount();
 initInteract();
 initCombat();
 initSkills();
+initTarget();
+initTrade();
 initChat();
 initAuth();
 initSettings();
@@ -54,9 +58,11 @@ initInput(renderer.domElement, {
   craft: openNearestStation,
   map: toggleMap,
   skill: useSkill,
+  target: cycleTarget,
+  pick: pickPlayer,
   use: useConsumable,
   chat: openChat,
-  escape: () => { if (isMapBig()) setMapBig(false); else if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
+  escape: () => { if (tradeOpen()) cancelTrade(); else if (inspectOpen()) closeInspect(); else if (menuOpen()) closeMenu(); else if (isMapBig()) setMapBig(false); else if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
 });
 
 // ---- server messages ----
@@ -67,6 +73,8 @@ on('welcome', (m) => {
   const y = m.you;
   P.x = y.x; P.z = y.z; P.r = y.r;
   S.inv = y.inv;
+  S.coins = y.coins || 0;
+  S.target = null; clearTarget();
   Object.assign(S.st, y.st, { hp: y.hp, maxHp: y.mh });
   if (y.mana) onMana(y.mana);
   S.cd = {}; S.gcdUntil = 0; hideSpell();
@@ -121,15 +129,20 @@ on('d', (m) => {
 });
 on('inv', (m) => {
   S.inv = m.inv;
+  if (typeof m.c === 'number') S.coins = m.c;
   Object.assign(S.st, m.st);
   if (typeof m.hp === 'number') S.st.hp = m.hp;
   renderInv();
   refreshSkills();
+  refreshTrade();
   updateMountButton();
   updateHPUI();
   updateHud();
   if (panelState.type) renderPanel();
 });
+on('tg', onTg);
+on('inspected', onInspected);
+on('trade', onTrade);
 on('st', (m) => { Object.assign(S.st, m.st); updateHPUI(); updateHud(); });
 on('mana', onMana);
 on('cd', onCd);
@@ -241,6 +254,7 @@ function loop() {
   fr++;
   if (fr % (isMapBig() ? 12 : 6) === 0) drawMap();
   updateSkills(now);
+  updateTarget(now);
 
   P.y = Math.max(0.13, hgt(P.x, P.z));
   me.position.set(P.x, P.y + (S.mounted ? 0.55 : 0), P.z);
@@ -286,4 +300,4 @@ connect();
 loop();
 
 // handy for debugging / automated tests
-window.__nwo = { S, send, me }; // handle for the browser e2e test
+window.__nwo = { S, send, me, screenOf }; // handle for the browser e2e test
