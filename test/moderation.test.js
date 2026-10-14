@@ -152,3 +152,70 @@ test('a ban is saved with the account', async () => {
     assert.equal(env.gs.store.setBan('Nobody', { reason: 'x' }), false);
   } finally { await env.gs.stop(); }
 });
+
+test('/give: admins can put an item in their own bag, other players cannot', async () => {
+  const env = await boot();
+  try {
+    const boss = await join(env, { mode: 'register', name: 'Boss1', pass: 'pw-123456' });
+    const guest = await join(env, { mode: 'guest' });
+    guest.c.send({ t: 'chat', m: '/give sword' });
+    assert.ok(await guest.c.until((m) => m.t === 'fail' && /Unknown command/.test(m.m)));
+    boss.c.send({ t: 'chat', m: '/give nonsense' });
+    assert.ok(await boss.c.until((m) => m.t === 'fail' && /Usage: \/give/.test(m.m)));
+    boss.c.send({ t: 'chat', m: '/give plank 5' });
+    const inv = await boss.c.until((m) => m.t === 'inv' && m.inv.slots.some((s) => s && s.id === 'plank' && s.n === 5));
+    assert.ok(inv);
+    [boss, guest].forEach((x) => x.c.ws.terminate());
+  } finally { await env.gs.stop(); }
+});
+
+test('/teleport: admins can go to coordinates, a player, the town or the portal; others cannot', async () => {
+  const env = await boot();
+  try {
+    const boss = await join(env, { mode: 'register', name: 'Boss1', pass: 'pw-123456' });
+    const guest = await join(env, { mode: 'register', name: 'Plain1', pass: 'pw-123456' });
+    guest.c.send({ t: 'chat', m: '/teleport 100 100' });
+    assert.ok(await guest.c.until((m) => m.t === 'fail' && /Unknown command/.test(m.m)));
+    const room = env.gs.rooms.get(7);
+    const me = [...room.players.values()].find((q) => q.name === 'Boss1');
+    const other = [...room.players.values()].find((q) => q.name === 'Plain1');
+    boss.c.send({ t: 'chat', m: '/teleport 1200 -800' });
+    assert.ok(await boss.c.until((m) => m.t === 'pos' && m.x === 1200 && m.z === -800));
+    assert.equal(me.x, 1200); assert.equal(me.z, -800);
+    // a position packet that was already on its way must not drag the admin back
+    boss.c.send({ t: 'pos', x: 5, z: 5, r: 0 });
+    await new Promise((r) => setTimeout(r, 120));
+    assert.equal(me.x, 1200);
+    boss.c.send({ t: 'chat', m: '/tp 99999 0' });
+    assert.ok(await boss.c.until((m) => m.t === 'fail' && /outside the map/.test(m.m)));
+    boss.c.send({ t: 'chat', m: '/teleport portal' });
+    await boss.c.until((m) => m.t === 'pos' && m.z > 4000);
+    assert.ok(me.z > 4000 && me.z < 4455);
+    other.x = 300; other.z = 400;
+    boss.c.send({ t: 'chat', m: '/teleport plain1' });
+    await boss.c.until((m) => m.t === 'pos' && m.x > 299 && m.x < 305);
+    assert.ok(Math.abs(me.x - 301.5) < 0.1 && me.z === 400);
+    boss.c.send({ t: 'chat', m: '/teleport town' });
+    await boss.c.until((m) => m.t === 'pos' && m.z === 22);
+    assert.equal(me.z, 22);
+    boss.c.send({ t: 'chat', m: '/teleport' });
+    assert.ok(await boss.c.until((m) => m.t === 'fail' && /Usage: \/teleport/.test(m.m)));
+    [boss, guest].forEach((x) => x.c.ws.terminate());
+  } finally { await env.gs.stop(); }
+});
+
+test('coins: new players have none, an admin account gets 10 billion once', async () => {
+  const env = await boot();
+  try {
+    const boss = await join(env, { mode: 'register', name: 'Boss1', pass: 'pw-123456' });
+    const other = await join(env, { mode: 'register', name: 'Plain1', pass: 'pw-123456' });
+    assert.equal(boss.res.you.coins, 10_000_000_000);
+    assert.equal(other.res.you.coins, 0);
+    boss.c.ws.terminate();
+    await new Promise((r) => setTimeout(r, 150));
+    const again = await join(env, { mode: 'login', name: 'Boss1', pass: 'pw-123456' });
+    assert.equal(again.res.t, 'welcome');
+    assert.equal(again.res.you.coins, 10_000_000_000, 'saved, and not granted a second time');
+    [again, other].forEach((x) => x.c.ws.terminate());
+  } finally { await env.gs.stop(); }
+});

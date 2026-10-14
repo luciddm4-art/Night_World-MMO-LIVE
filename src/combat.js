@@ -7,7 +7,7 @@ import { attackFx } from './fx.js';
 
 // Turn toward the nearest living rabbit in reach of the held weapon so a swing doesn't miss by a few degrees.
 // Returns the distance to that rabbit (or the weapon's full reach when nothing is near).
-function autoFace(wp) {
+export function autoFace(wp) {
   let best = null, bd = wp.reach + 0.8;
   for (const id in S.rabbits) {
     const r = S.rabbits[id];
@@ -25,7 +25,7 @@ export function bindFigure(fig) { meFig = fig; }
 
 // The server validates cooldown, range and damage; this is just the button.
 export function tryAttack() {
-  if (!S.ready || S.mounted) return;
+  if (!S.ready || S.mounted || S.spell) return;
   const now = performance.now();
   const wp = weaponOf(S.inv.eq);
   if (now - atkT < wp.cd * (1 - S.st.haste)) return;

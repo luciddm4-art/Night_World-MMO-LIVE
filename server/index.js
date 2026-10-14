@@ -5,7 +5,8 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { normalizeSeed, NAME_RE, WORLDS } from '../shared/data.js';
+import { normalizeSeed, NAME_RE, WORLDS, ITEMS, CFG } from '../shared/data.js';
+import { addItem } from '../shared/inventory.js';
 import { makeFilter, reservedName, parseList, parseCommand } from './moderation.js';
 import { Room } from './room.js';
 import { Player } from './player.js';
@@ -151,7 +152,7 @@ export function createGameServer(opts = {}) {
     switch (c.cmd) {
       case 'help':
         say('/report <name> <reason> — tell the moderators about a player');
-        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports');
+        if (admin) say('Admin: /kick /mute <name> [min] /unmute /ban <name> [reason] /unban /say <text> /reports /give <item> [amount] /teleport <x> <z> | <player> | town | portal');
         return;
       case 'report': {
         const t = findByName(c.args[0]);
@@ -220,6 +221,36 @@ export function createGameServer(opts = {}) {
         cfg.log('ADMIN', p.name, 'unban', name);
         return say('Unbanned ' + name);
       }
+      case 'give': { // admin test helper: put an item (e.g. one you just added to the data files) in your own bag
+        if (!admin) break;
+        const id = String(c.args[0] || '').toLowerCase();
+        const n = Math.max(1, Math.min(99, Math.floor(Number(c.args[1]) || 1)));
+        if (!ITEMS[id]) return room.fail(p, 'Usage: /give <item id> [amount]. Item ids are in shared/data.js (e.g. sword, iron_boots, plank)');
+        if (!addItem(p.inv, id, n)) return room.fail(p, 'Your inventory is full');
+        room.gain(p, id, n, 'admin');
+        room.sendInv(p);
+        cfg.log('ADMIN', p.name, 'give', id, n);
+        return;
+      }
+      case 'teleport': case 'tp': { // admin: go anywhere on the map, or to a player
+        if (!admin) break;
+        const usage = 'Usage: /teleport <x> <z>  |  /teleport <player name>  |  /teleport town  |  /teleport portal';
+        const a0 = String(c.args[0] || '').toLowerCase();
+        let x, z, label;
+        if (!a0) return room.fail(p, usage);
+        if (a0 === 'town' || a0 === 'spawn') { x = room.realm.spawn.x; z = room.realm.spawn.z; label = room.realm.id === 't2' ? 'the village' : 'the town'; }
+        else if (a0 === 'portal') { x = room.realm.portal.x; z = room.realm.portal.z - 8; label = 'the portal'; }
+        else if (c.args.length >= 2 && Number.isFinite(Number(c.args[0])) && Number.isFinite(Number(c.args[1]))) { x = Number(c.args[0]); z = Number(c.args[1]); label = Math.round(x) + ', ' + Math.round(z); }
+        else {
+          const t = target();
+          if (!t) return;
+          if (t.room !== room) return room.fail(p, t.player.name + ' is in another world');
+          x = t.player.x + 1.5; z = t.player.z; label = t.player.name;
+        }
+        if (!room.teleport(p, x, z)) return room.fail(p, 'That is outside the map (limit ±' + room.realm.limit + ')');
+        cfg.log('ADMIN', p.name, 'teleport', label);
+        return say('Teleported to ' + label);
+      }
       case 'say': {
         if (!admin) break;
         if (!c.rest) return room.fail(p, 'Usage: /say <message>');
@@ -277,7 +308,7 @@ export function createGameServer(opts = {}) {
   }
 
   function savePlayer(entry) {
-    if (entry.player.account) store.saveCharacter(entry.player.account, entry.player.toSave(entry.room.seed));
+    if (entry.player.account) store.saveCharacter(entry.player.account, entry.player.toSave(entry.room.seed, entry.room.now()));
   }
 
   function detach(ws) {
@@ -370,8 +401,14 @@ export function createGameServer(opts = {}) {
           ws.send(JSON.stringify(obj));
         },
       });
+      if (isAdmin(player) && !player.adminGrant) { // admins get 10 billion coins, once
+        player.coins = Math.min(CFG.COINS_MAX, player.coins + CFG.ADMIN_COINS);
+        player.adminGrant = true;
+        player.dirty = true;
+        cfg.log('ADMIN', player.name, 'received the one-time admin coin grant');
+      }
       player.v2 = m.v === 2; // new clients understand delta snapshots ("d"); old pages keep getting full ones ("s")
-      if (!player.restore(saved, seed)) player.setSpawn();
+      if (!player.restore(saved, seed)) player.setSpawn(Math.random, room.realm.spawn);
       else room.ensureStandable(player);
       const entry = { player, room, ws };
       ws.entry = entry;

@@ -1,6 +1,8 @@
 // Deterministic world generation. Server and client both call createWorld(seed)
 // and get the same terrain height, trees, resource nodes and rabbit spawn points.
 import { CFG, TOWN, PORTAL, PORTAL_SAFE, inSafeZone } from './data.js';
+import { FROST_SEED, T1_REALM } from './realm.js';
+import { createFrostWorld } from './frostfall.js';
 
 const sstep = (a, b, x) => {
   x = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -8,6 +10,7 @@ const sstep = (a, b, x) => {
 };
 
 export function createWorld(seed) {
+  if (seed === FROST_SEED) return createFrostWorld(seed); // Tier 2: Frostfall has its own terrain
   const CS = CFG.CS;
 
   const h2 = (i, j) => {
@@ -100,5 +103,5 @@ export function createWorld(seed) {
     return cres(cx, cz).find((n) => n.id === id) || null;
   }
 
-  return { seed, hgt, ctrees, cres, crabbits, treeAt, nodeAt, h2, vn };
+  return { seed, realm: T1_REALM, hgt, ctrees, cres, crabbits, treeAt, nodeAt, h2, vn };
 }

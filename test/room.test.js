@@ -776,7 +776,7 @@ test('speed: walking is 6 units/s - running faster is corrected', () => {
   assert.ok(p.x - run.x0 < 6 * 1.15 * 8.5 + 1, 'moved only ' + (p.x - run.x0).toFixed(1));
 });
 
-test('speed: riding the donkey is 10 units/s and is never corrected', () => {
+test('speed: riding the donkey is 8.4 units/s and is never corrected, gallop included', () => {
   const { room, now } = makeRoom();
   const run = openRun();
   const p = makePlayer(room, 'a', { x: run.x0, z: run.z });
@@ -790,6 +790,12 @@ test('speed: riding the donkey is 10 units/s and is never corrected', () => {
   }
   assert.equal(p.last('pos'), undefined);
   assert.ok(Math.abs(p.x - x) < 1e-9);
+  for (let i = 0; i < 100; i++) { // galloping: +10%
+    now.advance(70);
+    x += CFG.RIDE_SPEED * CFG.GALLOP_MULT * 0.07;
+    room.handle(p, { t: 'p', x, z: run.z, r: 1 });
+  }
+  assert.equal(p.last('pos'), undefined, 'gallop speed is allowed');
 });
 
 // ---------------------------------------------------------------- donkey HP

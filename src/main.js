@@ -1,8 +1,14 @@
 // Wires everything together and runs the render loop.
 import { CFG, weaponIdOf } from '../shared/data.js';
 import { S } from './state.js';
-import { T, scene, cam, renderer, onResize, sky } from './scene.js';
-import { animateCourtyard } from './courtyard.js';
+import { T, scene, cam, renderer, onResize, sky, adaptQuality } from './scene.js';
+import { REALM } from './config.js';
+// The start world builds its Crafting Hall and town; Frostfall builds its own village (both are pure scenery)
+if (REALM.id === 't2') { // the caption names the world you are in
+  document.getElementById('cap').textContent = 'Night World Online — ' + REALM.name;
+  document.title = 'Night World Online — ' + REALM.name;
+}
+const { animateCourtyard } = REALM.id === 't1' ? await import('./courtyard.js') : await import('./village.js');
 import { mkFig, animFig, upS, setHeld } from './figures.js';
 import { hgt, updateWorld, isFree, setNodeQty, resetNodes, updateNodeFx } from './terrain.js';
 import { syncRabbits, patchRabbits, updateRabbits, clearRabbits, onHit } from './rabbits.js';
@@ -15,11 +21,15 @@ import { on, send, connect, stop } from './net.js';
 import { say, showBoot, updateHPUI, updateHud } from './ui.js';
 import { initInventory, renderInv, toggleInv, invOpen } from './inventory.js';
 import { initPanel, panelState, openNearestStation, closePanel, renderPanel } from './panel.js';
+import { stepRide, hitRide, rideSpeed } from '../shared/gallop.js';
 import { initMount, updateMountButton, applyMountState, updateDonkey } from './mount.js';
 import { initInteract, checkNear, doInteract, onCast, onFail, cancelGather, updateGather } from './interact.js';
 import { initCombat, tryAttack, bindFigure } from './combat.js';
+import { screenOf, initTarget, onTg, onInspected, pickPlayer, cycleTarget, updateTarget, closeMenu, menuOpen, inspectOpen, closeInspect, clearTarget } from './target.js';
+import { initTrade, onTrade, tradeOpen, cancelTrade, refreshTrade } from './trade.js';
+import { initSkills, refreshSkills, useSkill, useConsumable, updateSkills, onMana, onCd, onBuffs, onScast, onScancel, onSkillFx, hideSpell, cancelSpellByMoving } from './skills.js';
 import { initChat, addChat, openChat, closeChat, isTyping } from './chat.js';
-import { drawMap } from './minimap.js';
+import { drawMap, isMapBig, setMapBig, toggleMap } from './minimap.js';
 import { input, initInput } from './input.js';
 import { initAuth, myColor, logout } from './auth.js';
 
@@ -36,6 +46,9 @@ initPanel();
 initMount();
 initInteract();
 initCombat();
+initSkills();
+initTarget();
+initTrade();
 initChat();
 initAuth();
 initSettings();
@@ -49,8 +62,13 @@ initInput(renderer.domElement, {
   interact: doInteract,
   toggleInv,
   craft: openNearestStation,
+  map: toggleMap,
+  skill: useSkill,
+  target: cycleTarget,
+  pick: pickPlayer,
+  use: useConsumable,
   chat: openChat,
-  escape: () => { if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
+  escape: () => { if (tradeOpen()) cancelTrade(); else if (inspectOpen()) closeInspect(); else if (menuOpen()) closeMenu(); else if (isMapBig()) setMapBig(false); else if (isTyping()) closeChat(); else if (panelState.type) closePanel(); else if (invOpen) toggleInv(); else closeSettings(); },
 });
 
 // ---- server messages ----
@@ -61,7 +79,12 @@ on('welcome', (m) => {
   const y = m.you;
   P.x = y.x; P.z = y.z; P.r = y.r;
   S.inv = y.inv;
+  S.coins = y.coins || 0;
+  S.target = null; clearTarget();
   Object.assign(S.st, y.st, { hp: y.hp, maxHp: y.mh });
+  if (y.mana) onMana(y.mana);
+  S.cd = {}; S.gcdUntil = 0; hideSpell();
+  onBuffs(y.buffs || {});
   applyMountState(y.mt, y.dk, y.dh, y.dr);
   resetNodes(m.depleted);
   clearRabbits();
@@ -72,6 +95,7 @@ on('welcome', (m) => {
   cf.snap = true;
   sent.x = NaN;
   renderInv();
+  refreshSkills();
   updateMountButton();
   updateHPUI();
   updateHud();
@@ -111,14 +135,28 @@ on('d', (m) => {
 });
 on('inv', (m) => {
   S.inv = m.inv;
+  if (typeof m.c === 'number') S.coins = m.c;
   Object.assign(S.st, m.st);
   if (typeof m.hp === 'number') S.st.hp = m.hp;
   renderInv();
+  refreshSkills();
+  refreshTrade();
   updateMountButton();
   updateHPUI();
   updateHud();
   if (panelState.type) renderPanel();
 });
+on('tg', onTg);
+on('inspected', onInspected);
+on('trade', onTrade);
+on('st', (m) => { Object.assign(S.st, m.st); updateHPUI(); updateHud(); });
+on('mana', onMana);
+on('cd', onCd);
+on('buffs', onBuffs);
+on('scast', onScast);
+on('scancel', onScancel);
+on('heal', (m) => floatText(P.x, P.y + 2.4, P.z, '+' + m.d, 'heal'));
+on('skfx', (m) => onSkillFx(m, (id) => (id === S.myId ? { x: P.x, y: P.y, z: P.z } : S.others[id] ? S.others[id].g.position : null)));
 on('node', (m) => setNodeQty(m.id, m.qty));
 on('toast', (m) => say(m.m));
 on('fail', (m) => { say(m.m); sfx('error'); onFail(); });
@@ -128,6 +166,8 @@ on('hurt', (m) => {
     sfx('hurt');
     shake(0.15);
     floatText(P.x, P.y + 2.6, P.z, '-' + m.d, 'mount');
+    if (S.ride.gallop) say('The donkey slows down...');
+    hitRide(S.ride); // a bite ends the gallop; riding for 3 more seconds brings it back
     return;
   }
   sfx('hurt');
@@ -147,6 +187,7 @@ on('chat', (m) => addChat(m.n, m.m));
 on('kick', (m) => { stop(); showBoot(m.m, 'Reload the page to play here again.', { tips: false, game: false }); });
 on('close', () => {
   cancelGather(false);
+  hideSpell();
   clearPlayers();
   clearRabbits();
 });
@@ -175,6 +216,8 @@ function loop() {
   if (!S.ready) { ix = 0; iz = 0; }
   const moving = Math.abs(ix) > 0.05 || Math.abs(iz) > 0.05;
   if (S.gather.active && moving) cancelGather();
+  if (S.spell && moving) cancelSpellByMoving();
+  stepRide(S.ride, dt, moving && !S.gather.active && S.ready, S.mounted);
   updateGather(now);
 
   const yaw = input.yaw, pitch = input.pitch;
@@ -185,7 +228,7 @@ function loop() {
   if (l > 0.05 && !S.gather.active) {
     if (l > 1) { mx /= l; mz /= l; }
     // two speeds: walking (6/s) and the donkey (10/s). There is no sprint.
-    const sp = S.mounted ? CFG.RIDE_SPEED : CFG.WALK_SPEED;
+    const sp = S.mounted ? rideSpeed(S.ride) : CFG.WALK_SPEED * (1 + (S.st.speed || 0)); // donkey 8.4 (9.24 galloping); boots: +40% on foot
     tvx = mx * sp; tvz = mz * sp;
     aim = Math.atan2(mx, mz);
   }
@@ -215,7 +258,9 @@ function loop() {
   }
 
   fr++;
-  if (fr % 6 === 0) drawMap();
+  if (fr % (isMapBig() ? 12 : 6) === 0) drawMap();
+  updateSkills(now);
+  updateTarget(now);
 
   P.y = Math.max(0.13, hgt(P.x, P.z));
   me.position.set(P.x, P.y + (S.mounted ? 0.55 : 0), P.z);
@@ -234,7 +279,7 @@ function loop() {
     if (stepD > 4.2) { stepD = 0; sfx('step'); }
   } else if (S.mounted && psp > 3) {
     dustT -= dt;
-    if (dustT <= 0) { dustT = 0.1; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
+    if (dustT <= 0) { dustT = S.ride.gallop ? 0.05 : 0.1; burst(P.x, P.y + 0.1, P.z, { n: 2, color: 0x6a6f80, speed: 0.6, up: 0.8, life: 0.4, grav: 1 }); }
   }
 
   // camera follows with a little smoothing; snap if we were teleported
@@ -254,6 +299,7 @@ function loop() {
   updateFloaters(now);
 
   renderer.render(scene, cam);
+  adaptQuality(dt * 1000, now);
   requestAnimationFrame(loop);
 }
 
@@ -261,4 +307,4 @@ connect();
 loop();
 
 // handy for debugging / automated tests
-window.__nwo = { S, send, me }; // handle for the browser e2e test
+window.__nwo = { S, send, me, screenOf }; // handle for the browser e2e test
