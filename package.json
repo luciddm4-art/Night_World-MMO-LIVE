@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "pg": "^8.23.1",
-    "ws": "^8.18.0"
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
